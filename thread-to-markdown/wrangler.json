@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "thread-to-md",
+  "account_id": "080fd9e0587416d2fa30ed1f527e2323",
+  "compatibility_date": "2025-11-30",
+  "main": "worker.ts",
+  "routes": [
+    { "pattern": "xymake.com", "custom_domain": true },
+    { "custom_domain": true, "pattern": "www.xymake.com" }
+  ]
+}
