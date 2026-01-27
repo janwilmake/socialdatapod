@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-white">
+
+<head>
+    <!-- Analytics -->
+    <script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloneChat - A new way to engage with your audience</title>
+    <meta name="description"
+        content="Create an AI clone of yourself from your X posts. Give your users the attention they deserve with a digital twin that's always available to chat." />
+    <meta name="robots" content="index, follow" />
+    <meta name="keywords"
+        content="AI clone, X posts, Twitter AI, digital twin, chat clone, personal AI, social media AI, LinkTree alternative" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://clonechat.me" />
+
+    <link rel="apple-touch-icon" sizes="400x400" href="/apple-touch-icon.png">
+    <link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+
+    <!-- Facebook Meta Tags -->
+    <meta property="og:url" content="https://clonechat.me" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CloneChat - A new way to engage with your audience" />
+    <meta property="og:description"
+        content="Create an AI clone of yourself from your X posts. Give your users the attention they deserve with a digital twin that's always available to chat." />
+    <meta property="og:image" content="https://quickog.com/screenshot/clonechat.me" />
+    <meta property="og:image:alt" content="CloneChat - A new way to engage with your audience" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="twitter:domain" content="clonechat.me" />
+    <meta property="twitter:url" content="https://clonechat.me" />
+    <meta name="twitter:title" content="CloneChat - A new way to engage with your audience" />
+    <meta name="twitter:description"
+        content="Create an AI clone of yourself from your X posts. Give your users the attention they deserve with a digital twin that's always available to chat." />
+    <meta name="twitter:image" content="https://quickog.com/screenshot/clonechat.me" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "CloneChat",
+        "description": "Create an AI clone of yourself from your X posts",
+        "url": "https://clonechat.me",
+        "applicationCategory": "AI, Social Media",
+        "operatingSystem": "Web Browser"
+    }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        telegram: '#0088cc',
+                        'telegram-dark': '#006ba6',
+                        'telegram-light': '#e1f5ff',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Twitter Widgets JavaScript -->
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+        body {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .chat-bubble {
+            border-radius: 18px;
+            max-width: 280px;
+            word-wrap: break-word;
+        }
+
+        .chat-bubble.sent {
+            background: #0088cc;
+            color: white;
+            margin-left: auto;
+            margin-right: 0;
+        }
+
+        .chat-bubble.received {
+            background: #f1f3f4;
+            color: #333;
+            margin-left: 0;
+            margin-right: auto;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #0088cc 0%, #006ba6 100%);
+        }
+
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .animate-float-delay {
+            animation: float 6s ease-in-out infinite;
+            animation-delay: 2s;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 136, 204, 0.1);
+        }
+
+        .chat-demo {
+            max-height: 450px;
+            overflow-y: hidden;
+            /* Disable user scroll */
+            position: relative;
+        }
+
+        .chat-messages {
+            min-height: 250px;
+            max-height: 250px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        /* Hide scrollbar but keep functionality */
+        .chat-messages::-webkit-scrollbar {
+            display: none;
+        }
+
+        .chat-messages {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Disabled input styles */
+        .demo-input-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .demo-button-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body class="bg-white text-gray-900">
+    <main class="min-h-screen">
+        <!-- Header -->
+        <header class="py-6 px-6 lg:px-8">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center">
+                        <span class="text-white font-bold text-lg">💬</span>
+                    </div>
+                    <span class="text-xl font-semibold">CloneChat</span>
+                </div>
+                <a href="/login"
+                    class="bg-telegram hover:bg-telegram-dark text-white px-4 py-2 sm:px-6 rounded-full font-medium transition-colors text-sm sm:text-base">
+                    Get Started
+                </a>
+            </div>
+        </header>
+
+        <!-- Hero Section -->
+        <section class="py-12 lg:py-20 px-6 lg:px-8">
+            <div class="max-w-7xl mx-auto">
+                <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+                    <!-- Left: Content -->
+                    <div class="fade-in">
+                        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6">
+                            A new way to<br>
+                            <span class="text-telegram">engage</span> with<br>
+                            your audience
+                        </h1>
+
+                        <p class="text-lg sm:text-xl text-gray-600 mb-8 leading-relaxed">
+                            Create an AI version of yourself from your X posts and give your users the attention they
+                            deserve. Share one link and let people chat with your digital twin 24/7.
+                        </p>
+
+                        <div class="flex flex-col sm:flex-row gap-4 mb-12">
+                            <a href="/login"
+                                class="bg-telegram hover:bg-telegram-dark text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full font-semibold text-base sm:text-lg transition-colors inline-flex items-center justify-center gap-3">
+                                <svg class="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
+                                    <path
+                                        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.80l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                                </svg>
+                                Create with X
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Right: Chat Demo -->
+                    <div class="relative" id="demo">
+                        <div class="glass rounded-3xl p-4 sm:p-6 shadow-2xl max-w-sm sm:max-w-md mx-auto chat-demo">
+                            <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+                                <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                                    <span class="text-gray-600 font-semibold">AI</span>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold">Your AI Clone</h3>
+                                    <p class="text-sm text-gray-500">Always online</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4 chat-messages" id="chat-messages">
+                                <div class="chat-bubble received p-3">
+                                    <p class="text-sm">Hi! I'm an AI clone of @username. Ask me anything about my work,
+                                        interests, or thoughts!</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 pt-4 border-t border-gray-200">
+                                <div class="flex gap-2">
+                                    <input type="text" placeholder="Ask me anything..."
+                                        class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-telegram text-sm demo-input-disabled"
+                                        id="demo-input" disabled>
+                                    <button
+                                        class="w-10 h-10 bg-telegram rounded-full flex items-center justify-center text-white demo-button-disabled"
+                                        id="send-btn" disabled>
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <!-- <section class="py-16 lg:py-20 px-6 lg:px-8 bg-gray-50">
+            <div class="max-w-4xl mx-auto text-center">
+                <h2 class="text-3xl sm:text-4xl font-bold mb-12 lg:mb-16">How it works</h2>
+
+                <div class="grid md:grid-cols-3 gap-6 lg:gap-8">
+                    <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm">
+                        <div class="w-16 h-16 gradient-bg rounded-full flex items-center justify-center mx-auto mb-6">
+                            <svg class="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.80l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-4">Connect Your X</h3>
+                        <p class="text-gray-600">We analyze your posts, replies, and conversations to understand your
+                            knowledge and personality.</p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm">
+                        <div class="w-16 h-16 gradient-bg rounded-full flex items-center justify-center mx-auto mb-6">
+                            <span class="text-white text-2xl">🤖</span>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-4">AI Clone Created</h3>
+                        <p class="text-gray-600">Powered by Grok, your AI clone learns your communication style and
+                            areas of expertise.</p>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 lg:p-8 shadow-sm">
+                        <div class="w-16 h-16 gradient-bg rounded-full flex items-center justify-center mx-auto mb-6">
+                            <span class="text-white text-2xl">💬</span>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-4">Share & Chat</h3>
+                        <p class="text-gray-600">Get your link and add it to your bio. People can now chat with you
+                            24/7.</p>
+                    </div>
+                </div>
+            </div>
+        </section> -->
+
+        <!-- Social Proof -->
+        <!-- <section class="py-16 lg:py-20 px-6 lg:px-8">
+            <div class="max-w-4xl mx-auto text-center">
+                <h2 class="text-3xl sm:text-4xl font-bold mb-12 lg:mb-16">See what people are saying</h2>
+
+                <div class="grid md:grid-cols-3 gap-6">
+                    <blockquote class="twitter-tweet" data-conversation="none" data-theme="light">
+                        <a href="https://twitter.com/grok/status/1975316917243289848"></a>
+                    </blockquote>
+
+                    <blockquote class="twitter-tweet" data-conversation="none" data-theme="light">
+                        <a href="https://twitter.com/janwilmake/status/1975206386729673048"></a>
+                    </blockquote>
+
+                    <blockquote class="twitter-tweet" data-conversation="none" data-theme="light">
+                        <a href="https://twitter.com/janwilmake/status/1975310720993779974"></a>
+                    </blockquote>
+                </div>
+            </div>
+        </section> -->
+
+        <!-- CTA Section -->
+        <!-- <section class="py-16 lg:py-20 px-6 lg:px-8 gradient-bg text-white">
+            <div class="max-w-4xl mx-auto text-center">
+                <h2 class="text-3xl sm:text-4xl font-bold mb-6">Ready to create your AI clone?</h2>
+                <p class="text-lg sm:text-xl mb-8 lg:mb-12 opacity-90">Join thousands who've replaced their link
+                    collections with smart
+                    conversations.</p>
+
+                <a href="/login"
+                    class="bg-white text-telegram px-6 sm:px-8 py-3 sm:py-4 rounded-full font-semibold text-base sm:text-lg hover:bg-gray-100 transition-colors inline-flex items-center gap-3">
+                    <svg class="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.80l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    Get Started for Free
+                </a>
+            </div>
+        </section> -->
+
+        <!-- Footer -->
+        <footer class="py-8 px-6 lg:px-8 bg-gray-50 text-center text-gray-600">
+            <div class="max-w-7xl mx-auto">
+                <p>© 2025 CloneChat. Not affiliated with X Corp.</p>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        // Demo chat functionality - fully automated
+        const demoConversations = [
+            {
+                user: "What do you do for work?",
+                ai: "I'm a software developer focused on AI and web technologies. Here's a recent post about my latest project: [link to X post]"
+            },
+            {
+                user: "What are your thoughts on AI?",
+                ai: "I believe AI should augment human creativity, not replace it. I wrote about this here: [link to X post]"
+            },
+            {
+                user: "Any book recommendations?",
+                ai: "I recently shared my top 5 tech books on X. Here's the thread: [link to X post]"
+            },
+            {
+                user: "How did you get started in tech?",
+                ai: "Started coding at 12! I shared my journey in this thread: [link to X post]. Self-taught mostly through online resources."
+            },
+            {
+                user: "What's your favorite programming language?",
+                ai: "JavaScript for its versatility! I can build full-stack apps and even mobile apps. Posted about this recently: [link to X post]"
+            }
+        ];
+
+        let currentConversationIndex = 0;
+        let demoRunning = false;
+
+        function scrollToBottom() {
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function addMessage(text, type, animate = true) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${type} p-3`;
+
+            if (animate) {
+                bubble.style.opacity = '0';
+                bubble.style.transform = 'translateY(10px)';
+            }
+
+            bubble.innerHTML = `<p class="text-sm">${text}</p>`;
+            messagesContainer.appendChild(bubble);
+
+            if (animate) {
+                setTimeout(() => {
+                    bubble.style.transition = 'all 0.3s ease-out';
+                    bubble.style.opacity = '1';
+                    bubble.style.transform = 'translateY(0)';
+                }, 100);
+            }
+
+            // Scroll to bottom immediately after adding message
+            setTimeout(scrollToBottom, 200);
+        }
+
+        function showTypingIndicator(message) {
+            const input = document.getElementById('demo-input');
+            input.placeholder = "Typing...";
+
+            let i = 0;
+            input.value = '';
+
+            const typingInterval = setInterval(() => {
+                if (i < message.length) {
+                    input.value += message[i];
+                    i++;
+                } else {
+                    clearInterval(typingInterval);
+
+                    // Show the complete message for a moment
+                    setTimeout(() => {
+                        // Add user message
+                        addMessage(message, 'sent');
+                        input.value = '';
+                        input.placeholder = "Ask me anything...";
+
+                        // Add AI response after delay
+                        setTimeout(() => {
+                            if (currentConversationIndex < demoConversations.length) {
+                                addMessage(demoConversations[currentConversationIndex].ai, 'received');
+                                currentConversationIndex++;
+                            }
+                        }, 1500);
+                    }, 800);
+                }
+            }, 60);
+        }
+
+        function runNextDemoExchange() {
+            if (!demoRunning || currentConversationIndex >= demoConversations.length) {
+                return;
+            }
+
+            const conversation = demoConversations[currentConversationIndex];
+            showTypingIndicator(conversation.user);
+        }
+
+        function startDemo() {
+            if (demoRunning) return;
+
+            demoRunning = true;
+
+            // Start first exchange after initial delay
+            setTimeout(runNextDemoExchange, 2000);
+
+            // Continue with subsequent exchanges
+            const demoInterval = setInterval(() => {
+                if (currentConversationIndex < demoConversations.length) {
+                    setTimeout(runNextDemoExchange, 1000);
+                } else {
+                    clearInterval(demoInterval);
+                    // Restart demo after all conversations are done
+                    setTimeout(() => {
+                        currentConversationIndex = 0;
+                        startDemo();
+                    }, 10000);
+                }
+            }, 8000);
+        }
+
+        // Disable all user interaction with the chat
+        document.getElementById('demo-input').addEventListener('keydown', function (e) {
+            e.preventDefault();
+        });
+
+        document.getElementById('demo-input').addEventListener('input', function (e) {
+            if (!demoRunning) {
+                e.target.value = '';
+            }
+        });
+
+        // Prevent scrolling in chat messages
+        document.getElementById('chat-messages').addEventListener('scroll', function (e) {
+            // Always keep scrolled to bottom
+            setTimeout(scrollToBottom, 0);
+        });
+
+        // Start demo when page loads
+        window.addEventListener('load', function () {
+            setTimeout(startDemo, 1000);
+        });
+    </script>
+</body>
+
+</html>

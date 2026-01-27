@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evidence Posts</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      /* Light theme colors (default) */
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8fafc;
+      --bg-tertiary: #f9fafb;
+      --border-primary: #e2e8f0;
+      --border-secondary: #e5e7eb;
+      --text-primary: #111827;
+      --text-secondary: #374151;
+      --text-muted: #6b7280;
+      --accent-primary: #2563eb;
+      --accent-secondary: #0284c7;
+      --success: #059669;
+      --warning: #d97706;
+      --error: #dc2626;
+    }
+
+    [data-theme="dark"] {
+      /* Dark theme colors */
+      --bg-primary: #111827;
+      --bg-secondary: #1f2937;
+      --bg-tertiary: #374151;
+      --border-primary: #374151;
+      --border-secondary: #4b5563;
+      --text-primary: #f9fafb;
+      --text-secondary: #e5e7eb;
+      --text-muted: #9ca3af;
+      --accent-primary: #3b82f6;
+      --accent-secondary: #0ea5e9;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .evidence-container {
+      height: 100vh;
+      max-height: 600px;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-primary);
+    }
+
+    .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-primary);
+      background: var(--bg-primary);
+      flex-shrink: 0;
+    }
+
+    .header h2 {
+      color: var(--accent-primary);
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .header .reasoning {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .carousel-container {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      min-height: 0;
+    }
+
+    .carousel {
+      display: flex;
+      height: 100%;
+      transition: transform 0.3s ease;
+    }
+
+    .carousel-slide {
+      width: 100%;
+      flex-shrink: 0;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tweet-embed {
+      width: 100%;
+      max-width: 550px;
+      height: auto;
+      border: none;
+      background: var(--bg-primary);
+    }
+
+    .navigation {
+      padding: 12px 20px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .nav-button {
+      background: var(--accent-primary);
+      color: white;
+      border: none;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 80px;
+    }
+
+    .nav-button:hover:not(:disabled) {
+      background: var(--accent-secondary);
+    }
+
+    .nav-button:disabled {
+      background: var(--text-muted);
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .counter {
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border-secondary);
+      border-top: 3px solid var(--accent-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .error {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--error);
+      text-align: center;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      margin: 20px;
+    }
+
+    .error-icon {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    /* Responsive design */
+    @media (max-width: 640px) {
+      .header {
+        padding: 12px 16px;
+      }
+
+      .carousel-slide {
+        padding: 16px;
+      }
+
+      .navigation {
+        padding: 8px 16px;
+      }
+
+      .nav-button {
+        padding: 6px 12px;
+        font-size: 13px;
+        min-width: 70px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="evidence-container">
+    <div class="header">
+      <h2>Evidence Posts</h2>
+      <div class="reasoning" id="reasoning">Loading...</div>
+    </div>
+
+    <div class="carousel-container">
+      <div class="carousel" id="carousel">
+        <div class="carousel-slide">
+          <div class="loading">
+            <div class="spinner"></div>
+            Loading posts...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="navigation">
+      <button class="nav-button" id="prevBtn" onclick="previousSlide()" disabled>Previous</button>
+      <div class="counter" id="counter">1 of 1</div>
+      <button class="nav-button" id="nextBtn" onclick="nextSlide()" disabled>Next</button>
+    </div>
+  </div>
+
+  <script>
+    let currentSlide = 0;
+    let totalSlides = 0;
+    let tweetIds = [];
+
+    /**
+     * Apply theme changes to the document
+     * @param {"light"|"dark"} theme - The theme to apply
+     */
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    function updateNavigation() {
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const counter = document.getElementById('counter');
+
+      prevBtn.disabled = currentSlide === 0;
+      nextBtn.disabled = currentSlide === totalSlides - 1;
+      counter.textContent = `${currentSlide + 1} of ${totalSlides}`;
+
+      const carousel = document.getElementById('carousel');
+      carousel.style.transform = `translateX(-${currentSlide * 100}%)`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        currentSlide++;
+        updateNavigation();
+      }
+    }
+
+    function previousSlide() {
+      if (currentSlide > 0) {
+        currentSlide--;
+        updateNavigation();
+      }
+    }
+
+    function showError(message) {
+      const carousel = document.getElementById('carousel');
+      carousel.innerHTML = `
+        <div class="carousel-slide">
+          <div class="error">
+            <div>
+              <div class="error-icon">⚠️</div>
+              <div>${message}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      totalSlides = 1;
+      currentSlide = 0;
+      updateNavigation();
+    }
+
+    function createTweetEmbeds() {
+      if (!tweetIds || tweetIds.length === 0) {
+        showError('No tweet IDs provided');
+        return;
+      }
+
+      const carousel = document.getElementById('carousel');
+      carousel.innerHTML = '';
+
+      totalSlides = tweetIds.length;
+      currentSlide = 0;
+
+      tweetIds.forEach((tweetId, index) => {
+        const slide = document.createElement('div');
+        slide.className = 'carousel-slide';
+
+        const iframe = document.createElement('iframe');
+        iframe.className = 'tweet-embed';
+        iframe.src = `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=${document.documentElement.getAttribute('data-theme') || 'light'}&chrome=noheader,nofooter,noborders`;
+        iframe.style.height = '400px';
+        iframe.style.maxHeight = '400px';
+
+        // Handle iframe load errors
+        iframe.onerror = () => {
+          slide.innerHTML = `
+            <div class="error">
+              <div>
+                <div class="error-icon">❌</div>
+                <div>Failed to load tweet ${tweetId}</div>
+              </div>
+            </div>
+          `;
+        };
+
+        slide.appendChild(iframe);
+        carousel.appendChild(slide);
+      });
+
+      updateNavigation();
+    }
+
+    /**
+     * Initialize the widget with OpenAI context data
+     */
+    function initialize() {
+      if (!window.openai) {
+        showError('OpenAI widget environment not available');
+        return;
+      }
+
+      try {
+        // Apply initial theme
+        if (window.openai.theme) {
+          applyTheme(window.openai.theme);
+        }
+
+        // Get tweet IDs from toolResponseMetadata (correct location)
+        const responseMetadata = window.openai.toolResponseMetadata;
+        if (responseMetadata && responseMetadata.tweetIds) {
+          tweetIds = responseMetadata.tweetIds;
+        } else {
+          // Fallback to toolOutput._meta for backward compatibility
+          const toolOutput = window.openai.toolOutput;
+          if (toolOutput && toolOutput._meta && toolOutput._meta.tweetIds) {
+            tweetIds = toolOutput._meta.tweetIds;
+          }
+        }
+
+        // Get reasoning text
+        let reasoning = 'Selected posts as evidence.';
+        if (responseMetadata && responseMetadata.reasoning) {
+          reasoning = responseMetadata.reasoning;
+        } else if (window.openai.toolOutput && window.openai.toolOutput._meta && window.openai.toolOutput._meta.reasoning) {
+          reasoning = window.openai.toolOutput._meta.reasoning;
+        }
+
+        document.getElementById('reasoning').textContent = reasoning;
+
+        if (tweetIds && tweetIds.length > 0) {
+          createTweetEmbeds();
+        } else {
+          showError('No tweet IDs found in response metadata');
+        }
+
+        // Listen for theme and other global changes
+        window.addEventListener('openai:set_globals', handleGlobalsChange);
+
+      } catch (error) {
+        console.error('Failed to initialize evidence posts widget:', error);
+        showError(`Initialization failed: ${error.message}`);
+      }
+    }
+
+    /**
+     * Handle global state changes from OpenAI host
+     * @param {CustomEvent} event - Global change event
+     */
+    function handleGlobalsChange(event) {
+      const { globals } = event.detail || {};
+      console.log('Globals changed:', Object.keys(globals || {}));
+
+      // Handle theme changes
+      if (globals?.theme && globals.theme !== window.openai.theme) {
+        applyTheme(globals.theme);
+
+        // Update iframe themes
+        const iframes = document.querySelectorAll('.tweet-embed');
+        iframes.forEach((iframe, index) => {
+          const tweetId = tweetIds[index];
+          if (tweetId) {
+            iframe.src = `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=${globals.theme}&chrome=noheader,nofooter,noborders`;
+          }
+        });
+      }
+
+      // Handle updated tool response metadata
+      if (globals?.toolResponseMetadata) {
+        window.openai.toolResponseMetadata = globals.toolResponseMetadata;
+
+        // Re-initialize if we get new tweet data
+        if (globals.toolResponseMetadata.tweetIds) {
+          tweetIds = globals.toolResponseMetadata.tweetIds;
+          createTweetEmbeds();
+        }
+      }
+    }
+
+    // Handle keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') {
+        previousSlide();
+      } else if (e.key === 'ArrowRight') {
+        nextSlide();
+      }
+    });
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+      initialize();
+    }
+  </script>
+</body>
+
+</html>

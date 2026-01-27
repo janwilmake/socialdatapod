@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-white">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Your AI Clone - CloneChat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        telegram: '#0088cc',
+                        'telegram-dark': '#006ba6',
+                        'telegram-light': '#e1f5ff',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+        body {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #0088cc 0%, #006ba6 100%);
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 136, 204, 0.1);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50">
+    <main class="min-h-screen flex items-center justify-center px-4 py-8">
+        <div class="max-w-md w-full">
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 gradient-bg rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <span class="text-white font-bold text-2xl">💬</span>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">Create Your AI Clone</h1>
+                <p class="text-gray-600 mt-2">Turn your X posts into an intelligent chatbot</p>
+            </div>
+
+            <!-- Data Access Information -->
+            <div class="glass rounded-2xl p-6 mb-6 shadow-lg">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <span class="text-telegram">🔒</span>
+                    What we access
+                </h2>
+
+                <div class="space-y-3">
+                    <div class="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                        <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <span class="text-gray-800 font-medium">Your posts & replies</span>
+                    </div>
+
+                    <div class="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
+                        <div class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <span class="text-gray-600">No DMs, likes, or bookmarks</span>
+                    </div>
+                </div>
+
+                <p class="text-sm text-gray-500 mt-4 text-center">
+                    We only read your public content to create your AI clone
+                </p>
+            </div>
+
+            <!-- Consent Form -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                <div class="space-y-4">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" id="terms-check"
+                            class="mt-1 w-5 h-5 text-telegram rounded focus:ring-telegram">
+                        <span class="text-gray-700">
+                            I accept the <a href="/terms.html" target="_blank"
+                                class="text-telegram underline hover:text-telegram-dark">Terms of Service</a>
+                            and <a href="/privacy.html" target="_blank"
+                                class="text-telegram underline hover:text-telegram-dark">Privacy Policy</a>
+                        </span>
+                    </label>
+
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" id="consent-check"
+                            class="mt-1 w-5 h-5 text-telegram rounded focus:ring-telegram">
+                        <span class="text-gray-700">
+                            I approve CloneChat to analyze my X content and create an AI clone for others to chat with
+                        </span>
+                    </label>
+
+                    <div class="border-t pt-4 mt-6">
+                        <h3 class="font-semibold text-gray-900 mb-3">Settings</h3>
+
+                        <label class="flex items-start gap-3 cursor-pointer mb-3">
+                            <input checked type="checkbox" id="public-check"
+                                class="mt-1 w-5 h-5 text-telegram rounded focus:ring-telegram">
+                            <span class="text-gray-700">
+                                Make my AI clone public so anyone can chat with it
+                            </span>
+                        </label>
+                        <!-- 
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input checked type="checkbox" id="featured-check"
+                                class="mt-1 w-5 h-5 text-telegram rounded focus:ring-telegram">
+                            <span class="text-gray-700">
+                                Feature my clone in the directory to help others discover it
+                            </span>
+                        </label> -->
+                    </div>
+                </div>
+
+                <button id="login-btn" disabled
+                    class="w-full mt-6 bg-telegram hover:bg-telegram-dark disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-full font-semibold transition-colors flex items-center justify-center gap-3">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    Create AI Clone with X
+                </button>
+            </div>
+
+            <div class="text-center mt-6">
+                <a href="/" class="text-telegram hover:text-telegram-dark">← Back to home</a>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const termsCheck = document.getElementById('terms-check');
+        const consentCheck = document.getElementById('consent-check');
+        const publicCheck = document.getElementById('public-check');
+        // const featuredCheck = document.getElementById('featured-check');
+        const loginBtn = document.getElementById('login-btn');
+
+        function updateLoginButton() {
+            const bothChecked = termsCheck.checked && consentCheck.checked;
+            loginBtn.disabled = !bothChecked;
+        }
+
+        termsCheck.addEventListener('change', updateLoginButton);
+        consentCheck.addEventListener('change', updateLoginButton);
+
+        loginBtn.addEventListener('click', () => {
+            if (!loginBtn.disabled) {
+                const params = new URLSearchParams();
+                if (publicCheck.checked) {
+                    params.set('public', 'true');
+                }
+                // if (featuredCheck.checked) {
+                //     params.set('featured', 'true');
+                // }
+
+                const redirectUrl = params.toString()
+                    ? `/dashboard?${params.toString()}`
+                    : '/dashboard';
+
+                window.location.href = `/authorize?redirect_to=${encodeURIComponent(redirectUrl)}`;
+            }
+        });
+    </script>
+</body>
+
+</html>

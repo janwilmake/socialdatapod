@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-white">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - CloneChat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        telegram: '#0088cc',
+                        'telegram-dark': '#006ba6',
+                        'telegram-light': '#e1f5ff',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+        body {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #0088cc 0%, #006ba6 100%);
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 136, 204, 0.1);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50">
+    <main class="min-h-screen px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-12">
+                <div class="w-16 h-16 gradient-bg rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <span class="text-white font-bold text-2xl">💬</span>
+                </div>
+                <h1 class="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
+                <p class="text-xl text-gray-600">Create your AI clone and start chatting</p>
+            </div>
+
+            <!-- Early Bird Notice -->
+            <div
+                class="bg-gradient-to-r from-orange-100 to-red-100 border-2 border-orange-300 rounded-2xl p-6 mb-8 text-center">
+                <h3 class="text-xl font-bold text-orange-800 mb-2 flex items-center justify-center gap-2">
+                    <span>🎉</span>
+                    Early Bird Special - Limited Time!
+                </h3>
+                <p class="text-orange-700 mb-2">Get lifetime access for just <span
+                        class="text-3xl font-bold text-red-600">$29</span> instead of $129</p>
+                <p class="text-sm text-orange-600">This introductory price won't last long. Secure your AI clone now!
+                </p>
+            </div>
+
+            <!-- Pricing Cards -->
+            <div class="grid md:grid-cols-2 gap-8 mb-12">
+                <!-- Free Tier -->
+                <div class="bg-white rounded-2xl p-8 border-2 border-gray-200 shadow-sm" id="free-card">
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-2">Free Demo</h3>
+                        <div class="text-4xl font-bold text-gray-700 mb-2">$0</div>
+                        <p class="text-gray-600">Try before you commit</p>
+                    </div>
+
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Limited recent posts</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Basic AI responses</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Test the experience</span>
+                        </li>
+                    </ul>
+
+                    <button
+                        class="w-full bg-gray-300 text-gray-500 px-6 py-3 rounded-full font-semibold cursor-not-allowed"
+                        id="free-button" disabled>
+                        Current Plan
+                    </button>
+                </div>
+
+                <!-- Premium Tier -->
+                <div class="bg-white rounded-2xl p-8 border-2 border-telegram shadow-lg relative" id="premium-card">
+                    <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                        <span
+                            class="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-semibold pulse-animation">
+                            🔥 77% OFF - LIMITED TIME
+                        </span>
+                    </div>
+
+                    <div class="text-center mb-6 mt-4">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-2">Full AI Clone</h3>
+                        <div class="mb-2">
+                            <span class="text-2xl line-through text-gray-400">$129</span>
+                            <div class="text-4xl font-bold text-red-600">$29</div>
+                            <span class="text-red-500 font-semibold">Early Bird Price!</span>
+                        </div>
+                        <p class="text-gray-600">Complete digital twin</p>
+                    </div>
+
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Up to 100k posts analyzed</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Powered by Grok AI</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Real-time post updates</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Custom chat link</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Priority processing</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span class="text-gray-700">Lifetime access</span>
+                        </li>
+                    </ul>
+
+                    <a href="#"
+                        class="w-full gradient-bg hover:opacity-90 text-white px-6 py-3 rounded-full font-semibold transition-colors block text-center"
+                        id="premium-button" target="_blank">
+                        Get Early Bird - $29
+                    </a>
+                </div>
+            </div>
+
+            <!-- FAQ Section -->
+            <div class="bg-white rounded-2xl p-8 shadow-sm">
+                <h2 class="text-2xl font-bold text-center mb-8">Frequently Asked Questions</h2>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">How does it work?</h4>
+                        <p class="text-gray-600 text-sm">We analyze your X posts to understand your knowledge, opinions,
+                            and communication style. Then we create an AI that can chat like you.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">Is my data safe?</h4>
+                        <p class="text-gray-600 text-sm">We only access your public posts. No DMs, likes, or private
+                            data. Your clone is built from what's already public on X.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">How accurate is the AI clone?</h4>
+                        <p class="text-gray-600 text-sm">Powered by Grok, it's highly accurate for topics you've posted
+                            about. The more you've shared, the better it represents you.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">Can I update my clone?</h4>
+                        <p class="text-gray-600 text-sm">Yes! Your clone automatically updates as you post new content
+                            on X, keeping it current with your latest thoughts.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">What if I have few posts?</h4>
+                        <p class="text-gray-600 text-sm">Even with limited posts, we can create a basic clone. The AI
+                            will be more accurate for topics you've discussed publicly.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">Is this really one-time payment?</h4>
+                        <p class="text-gray-600 text-sm">Yes! No subscriptions. One payment gets you lifetime access
+                            with automatic updates as you post new content.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Back to Dashboard -->
+            <div class="text-center mt-8">
+                <a href="/dashboard" class="text-telegram hover:text-telegram-dark font-medium">← Back to Dashboard</a>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const userData = {};
+
+        function updatePricingUI() {
+            const freeCard = document.getElementById('free-card');
+            const premiumCard = document.getElementById('premium-card');
+            const freeButton = document.getElementById('free-button');
+            const premiumButton = document.getElementById('premium-button');
+
+            if (userData.isPremium) {
+                premiumCard.classList.add('border-green-500');
+                premiumCard.classList.remove('border-telegram');
+                premiumButton.textContent = '✅ Current Plan';
+                premiumButton.classList.add('bg-green-500', 'cursor-not-allowed');
+                premiumButton.classList.remove('gradient-bg', 'hover:opacity-90');
+                premiumButton.removeAttribute('href');
+
+                freeButton.textContent = 'Upgrade Complete';
+            } else {
+                freeCard.classList.add('border-green-500');
+                freeButton.textContent = '✅ Current Plan';
+                freeButton.classList.add('bg-green-500', 'text-white');
+                freeButton.classList.remove('bg-gray-300', 'text-gray-500');
+                premiumButton.href = `https://buy.stripe.com/3cI28q0Zm7p79Pt1DjeNh43?client_reference_id=${userData.username}`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', updatePricingUI);
+    </script>
+</body>
+
+</html>

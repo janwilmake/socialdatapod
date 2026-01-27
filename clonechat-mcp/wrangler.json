@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "clonechat",
+  "compatibility_date": "2025-07-01",
+  "main": "worker.ts",
+  "routes": [
+    {
+      "custom_domain": true,
+      "pattern": "clonechat.me"
+    },
+    {
+      "custom_domain": true,
+      "pattern": "www.clonechat.me"
+    }
+  ],
+  "assets": { "directory": "./" },
+  "observability": { "logs": { "enabled": true } },
+  "durable_objects": {
+    "bindings": [{ "name": "USER_DO", "class_name": "UserDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserDO"] }]
+}
