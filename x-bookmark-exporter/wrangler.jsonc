@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "x-bookmark-exporter",
+  "main": "worker.ts",
+  "compatibility_date": "2025-07-14",
+  "observability": { "logs": { "enabled": true } },
+  "assets": { "directory": "./public" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "BookmarkExporter", "class_name": "BookmarkExporter" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BookmarkExporter"] }],
+}
