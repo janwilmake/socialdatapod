@@ -132,10 +132,11 @@ export default {
 
       const userData = (await meResponse.json()) as any;
       const userId = userData.data.id;
-
+      console.log({ userId });
       // Initialize Durable Object for this user
       const id = env.BookmarkExporter.idFromName(userId);
       const stub = env.BookmarkExporter.get(id);
+      console.log("tokens", tokens);
 
       await stub.initialize({
         userId,
@@ -143,9 +144,9 @@ export default {
         refreshToken: tokens.refresh_token,
       });
 
-      // Clear temporary cookies on success
+      // Clear temporary cookies and set userId cookie, then redirect to dashboard
       const successHeaders = new Headers({
-        "Content-Type": "text/html;charset=utf8",
+        Location: "/dashboard",
       });
       successHeaders.append(
         "Set-Cookie",
@@ -155,40 +156,15 @@ export default {
         "Set-Cookie",
         `x_code_verifier=; HttpOnly; Path=/; ${securePart}SameSite=Lax; Max-Age=0`,
       );
-
-      return new Response(
-        `<!DOCTYPE html>
-<html>
-<head>
-  <title>X Bookmark Exporter</title>
-  <style>
-    body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
-    .status { padding: 20px; background: #f0f9ff; border-radius: 8px; }
-    button { padding: 10px 20px; background: #1d9bf0; color: white; border: none; border-radius: 20px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <h1>X Bookmark Exporter</h1>
-  <div class="status">
-    <p>✅ Connected! User ID: ${userId}</p>
-    <p>Starting initial export...</p>
-  </div>
-  <script>
-    // Poll for status
-    setInterval(async () => {
-      const res = await fetch('/api/status/${userId}');
-      const data = await res.json();
-      document.querySelector('.status').innerHTML = \`
-        <p>📊 Total Bookmarks: \${data.totalBookmarks}</p>
-        <p>🔄 Status: \${data.isInitialExport ? 'Initial Export' : 'Synced'}</p>
-        <p>⏰ Last Sync: \${new Date(data.lastSyncTime || Date.now()).toLocaleString()}</p>
-      \`;
-    }, 2000);
-  </script>
-</body>
-</html>`,
-        { headers: successHeaders },
+      successHeaders.append(
+        "Set-Cookie",
+        `x_user_id=${userId}; HttpOnly; Path=/; ${securePart}SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`,
       );
+
+      return new Response("Redirecting to dashboard", {
+        status: 302,
+        headers: successHeaders,
+      });
     }
 
     // Status API
@@ -207,6 +183,115 @@ export default {
       const stub = env.BookmarkExporter.get(id);
       const bookmarks = await stub.exportBookmarks();
       return Response.json(bookmarks);
+    }
+
+    // Dashboard
+    if (url.pathname === "/dashboard") {
+      // Get userId from cookie
+      const cookie = request.headers.get("Cookie") || "";
+      const cookies = cookie.split(";").map((c) => c.trim());
+      const userId = cookies
+        .find((c) => c.startsWith("x_user_id="))
+        ?.split("=")[1];
+
+      if (!userId) {
+        return new Response("Redirecting to login", {
+          status: 302,
+          headers: { Location: "/" },
+        });
+      }
+
+      return new Response(
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - X Bookmark Exporter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #000;
+      color: #e7e9ea;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .header {
+      max-width: 550px;
+      margin: 0 auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .count {
+      color: #71767b;
+      font-size: 14px;
+    }
+    .tweets {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .tweet-container {
+      width: 100%;
+      max-width: 550px;
+    }
+    .empty {
+      color: #71767b;
+      padding: 40px 0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bookmarked Tweets</h1>
+    <span class="count" id="count">Loading...</span>
+  </div>
+  <div class="tweets" id="tweets"></div>
+
+  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+  <script>
+    const userId = '${userId}';
+
+    async function load() {
+      const res = await fetch('/api/export/' + userId);
+      const bookmarks = await res.json();
+
+      document.getElementById('count').textContent = bookmarks.length + ' bookmarks';
+
+      const container = document.getElementById('tweets');
+      if (bookmarks.length === 0) {
+        container.innerHTML = '<div class="empty">No bookmarks yet</div>';
+        return;
+      }
+
+      container.innerHTML = bookmarks.map(b => \`
+        <div class="tweet-container">
+          <blockquote class="twitter-tweet" data-theme="dark">
+            <a href="https://twitter.com/x/status/\${b.id}"></a>
+          </blockquote>
+        </div>
+      \`).join('');
+
+      // Re-render Twitter widgets
+      if (window.twttr && window.twttr.widgets) {
+        twttr.widgets.load();
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>`,
+        { headers: { "Content-Type": "text/html;charset=utf8" } },
+      );
     }
 
     // OAuth initiation
@@ -406,15 +491,62 @@ export class BookmarkExporter extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + 15 * 60 * 1000);
   }
 
+  private async refreshAccessToken(): Promise<boolean> {
+    const K = BookmarkExporter.KEYS;
+    const refreshToken = this.kv.get(K.REFRESH_TOKEN);
+
+    if (!refreshToken) {
+      console.log("No refresh token available");
+      return false;
+    }
+
+    const tokenBody = {
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: this.env.X_CLIENT_ID,
+    };
+
+    const response = await fetch("https://api.x.com/2/oauth2/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${btoa(`${this.env.X_CLIENT_ID}:${this.env.X_CLIENT_SECRET}`)}`,
+      },
+      body: new URLSearchParams(tokenBody),
+    });
+
+    if (!response.ok) {
+      console.log(
+        "Token refresh failed:",
+        response.status,
+        await response.text(),
+      );
+      return false;
+    }
+
+    const tokens = (await response.json()) as {
+      access_token: string;
+      refresh_token?: string;
+    };
+
+    this.kv.set(K.ACCESS_TOKEN, tokens.access_token);
+    if (tokens.refresh_token) {
+      this.kv.set(K.REFRESH_TOKEN, tokens.refresh_token);
+    }
+
+    console.log("Access token refreshed successfully");
+    return true;
+  }
+
   private async syncBookmarks() {
     const K = BookmarkExporter.KEYS;
 
     const userId = this.kv.get(K.USER_ID);
-    const accessToken = this.kv.get(K.ACCESS_TOKEN);
+    let accessToken = this.kv.get(K.ACCESS_TOKEN);
     if (!userId || !accessToken) return;
 
     const url = new URL(`https://api.x.com/2/users/${userId}/bookmarks`);
-    url.searchParams.set("max_results", "100");
+    url.searchParams.set("max_results", "90");
     url.searchParams.set("tweet.fields", "created_at,author_id,public_metrics");
 
     const paginationToken = this.kv.get(K.NEXT_PAGINATION_TOKEN);
@@ -424,9 +556,23 @@ export class BookmarkExporter extends DurableObject<Env> {
 
     this.kv.setNumber(K.LAST_REQUEST_TIME, Date.now());
 
-    const response = await fetch(url.toString(), {
+    let response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+
+    // Handle expired token - attempt refresh and retry
+    if (response.status === 401) {
+      console.log("Access token expired, attempting refresh");
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) {
+        accessToken = this.kv.get(K.ACCESS_TOKEN);
+        response = await fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else {
+        throw new Error("Token refresh failed - user needs to re-authenticate");
+      }
+    }
 
     if (response.status === 429) {
       console.log("Rate limited, will retry in 15 minutes");
@@ -439,6 +585,7 @@ export class BookmarkExporter extends DurableObject<Env> {
     }
 
     const data = (await response.json()) as any;
+    console.log({ data, meta: data.meta });
 
     // Store bookmarks
     if (data.data && data.data.length > 0) {
@@ -461,7 +608,6 @@ export class BookmarkExporter extends DurableObject<Env> {
       this.kv.setNumber(K.TOTAL_BOOKMARKS, count);
     }
 
-    console.log({ data });
     // Handle pagination
     if (data.meta?.next_token) {
       this.kv.set(K.NEXT_PAGINATION_TOKEN, data.meta.next_token);
@@ -481,8 +627,14 @@ export class BookmarkExporter extends DurableObject<Env> {
       return { error: "Not initialized" };
     }
 
+    // Get actual count from database instead of KV
+    const countResult = this.sql
+      .exec("SELECT COUNT(*) as count FROM bookmarks")
+      .toArray();
+    const totalBookmarks = (countResult[0]?.count as number) ?? 0;
+
     return {
-      totalBookmarks: this.kv.getNumber(K.TOTAL_BOOKMARKS) ?? 0,
+      totalBookmarks,
       isInitialExport: this.kv.getBool(K.IS_INITIAL_EXPORT),
       lastSyncTime: this.kv.getNumber(K.LAST_SYNC_TIME),
       nextPaginationToken: this.kv.get(K.NEXT_PAGINATION_TOKEN),
