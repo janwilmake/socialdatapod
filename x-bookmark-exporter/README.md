@@ -2,7 +2,6 @@ This bookmark exporter allows exporting bookmarks via the API. It works on the f
 
 TODO:
 
-- for each tweet, get the context (can be a thread, can have quoted info, can have media)
+- for each tweet, get the context (can be a thread, can have quoted info, can have media). create `lib/twitterApiGetThreadContext.ts` which is a general way of getting an entire thread (had this in other code before)
+- work on the value proposition of socialdatapod...
 - ✅ ensure it keeps refreshing every 15 minutes
-- create `lib/twitterApiGetThreadContext.ts` which is a general way of getting an entire thread (had this in other code before)
-- ensure to also get the thread for each bookmarked post

@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>grokthyself - Know Thyself Through Neural Context</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+        @keyframes subtle-pulse {
+
+            0%,
+            100% {
+                opacity: 0.8;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        @keyframes grid-move {
+            0% {
+                background-position: 0 0;
+            }
+
+            100% {
+                background-position: 50px 50px;
+            }
+        }
+
+        .serif {
+            font-family: 'Cormorant Garamond', serif;
+        }
+
+        .mono {
+            font-family: 'Space Mono', monospace;
+        }
+
+        .cyber-grid {
+            background-image:
+                linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 30s linear infinite;
+        }
+
+        .subtle-glow {
+            text-shadow: 0 0 20px rgba(148, 163, 184, 0.3);
+        }
+
+        .border-glow {
+            box-shadow: 0 0 15px rgba(148, 163, 184, 0.2), inset 0 0 10px rgba(148, 163, 184, 0.1);
+        }
+
+        .marble-texture {
+            background: linear-gradient(135deg,
+                    rgba(248, 250, 252, 0.05) 0%,
+                    rgba(226, 232, 240, 0.05) 50%,
+                    rgba(248, 250, 252, 0.05) 100%);
+        }
+
+        .column-decoration::before,
+        .column-decoration::after {
+            content: '';
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.3), transparent);
+        }
+
+        .column-decoration::before {
+            left: 0;
+        }
+
+        .column-decoration::after {
+            right: 0;
+        }
+
+        .greek-ornament {
+            border-top: 2px solid rgba(148, 163, 184, 0.3);
+            border-bottom: 2px solid rgba(148, 163, 184, 0.3);
+            position: relative;
+        }
+
+        .greek-ornament::before {
+            content: '◆';
+            position: absolute;
+            left: 50%;
+            top: -12px;
+            transform: translateX(-50%);
+            color: rgba(148, 163, 184, 0.5);
+            font-size: 20px;
+        }
+
+        .pillar-cap {
+            border-top: 3px solid rgba(148, 163, 184, 0.3);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            height: 4px;
+            margin-bottom: 8px;
+        }
+
+        .scroll-ornament {
+            background: linear-gradient(90deg,
+                    transparent 0%,
+                    rgba(148, 163, 184, 0.2) 50%,
+                    transparent 100%);
+            height: 1px;
+            position: relative;
+        }
+
+        .scroll-ornament::before,
+        .scroll-ornament::after {
+            content: '◆';
+            position: absolute;
+            color: rgba(148, 163, 184, 0.4);
+            font-size: 12px;
+            top: -6px;
+        }
+
+        .scroll-ornament::before {
+            left: 0;
+        }
+
+        .scroll-ornament::after {
+            right: 0;
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 overflow-x-hidden">
+
+    <!-- Cyber Grid Background -->
+    <div class="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
+
+    <!-- Subtle Vignette -->
+    <div class="fixed inset-0 bg-gradient-radial from-transparent via-transparent to-slate-950/50 pointer-events-none">
+    </div>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center overflow-hidden py-12">
+        <!-- Floating Background Elements -->
+        <div class="absolute inset-0 overflow-hidden">
+            <div class="absolute w-96 h-96 bg-slate-500/5 rounded-full blur-3xl -top-48 -left-48"
+                style="animation: float 20s ease-in-out infinite;"></div>
+            <div class="absolute w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -bottom-48 -right-48"
+                style="animation: float 25s ease-in-out infinite; animation-delay: 5s;"></div>
+        </div>
+
+        <div class="container mx-auto px-6 relative z-10">
+            <div class="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+                <!-- Left: Text Content -->
+                <div class="flex-1 text-center lg:text-left">
+                    <!-- Logo -->
+                    <h1 class="text-3xl md:text-4xl lg:text-5xl font-black serif text-slate-200 mb-6 subtle-glow">
+                        Your <span class="text-white font-bold">𝕏</span> Posts as a <span
+                            class="text-blue-400">Personal MCP</span> For Your Audience
+                    </h1>
+
+                    <!-- Ornamental Divider -->
+                    <div class="flex items-center justify-center lg:justify-start gap-4 mb-6">
+                        <div class="scroll-ornament w-24"></div>
+                        <span class="text-slate-500 text-2xl">◆</span>
+                        <div class="scroll-ornament w-24"></div>
+                    </div>
+
+                    <!-- Subtitle -->
+                    <p class="text-lg md:text-xl mb-8 text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed mono">
+                        Turn your posts into <span class="text-blue-400">portable knowledge</span> that AI agents can
+                        query and cite.
+                    </p>
+
+                    <!-- CTA Button -->
+                    <a href="/login"
+                        class="inline-flex items-center gap-4 bg-slate-900/50 border border-slate-600 text-slate-200 px-10 py-5 text-lg font-semibold hover:bg-slate-800 hover:border-slate-400 transition-all duration-300 border-glow group backdrop-blur-sm mono">
+                        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                        </svg>
+                        <span>Connect Your 𝕏</span>
+                    </a>
+
+                    <!-- Hint -->
+                    <div class="mt-6 text-sm text-slate-500 serif italic">
+                        Setup in under a minute
+                    </div>
+                </div>
+
+                <!-- Right: Phone Mockup -->
+                <div class="flex-1 w-full max-w-sm lg:max-w-md">
+                    <!-- Phone Frame -->
+                    <div class="relative mx-auto" style="max-width: 320px;">
+                        <!-- Phone Bezel -->
+                        <div class="bg-slate-800 rounded-[3rem] p-3 border border-slate-700 shadow-2xl">
+                            <!-- Notch -->
+                            <div
+                                class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-slate-800 rounded-b-2xl z-10">
+                            </div>
+                            <!-- Screen -->
+                            <div class="bg-slate-950 rounded-[2.25rem] overflow-hidden relative">
+                                <!-- Status Bar -->
+                                <div
+                                    class="bg-slate-900 px-6 py-2 flex justify-between items-center text-xs text-slate-400 mono">
+                                    <span>9:41</span>
+                                    <div class="flex gap-1 items-center">
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                d="M12 3a9 9 0 0 0-9 9 9 9 0 0 0 18 0 9 9 0 0 0-9-9zm0 16.5a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"
+                                                opacity=".3" />
+                                            <path d="M12 6v6l4 2" />
+                                        </svg>
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M2 17h20v4H2z" />
+                                            <path d="M4 13h16v2H4z" opacity=".7" />
+                                            <path d="M6 9h12v2H6z" opacity=".5" />
+                                            <path d="M8 5h8v2H8z" opacity=".3" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <!-- Chat Header -->
+                                <div
+                                    class="bg-slate-900/80 px-4 py-3 border-b border-slate-800 flex items-center gap-3">
+                                    <div
+                                        class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold">
+                                        AI</div>
+                                    <div>
+                                        <div class="text-slate-200 text-sm font-medium">Claude</div>
+                                        <div class="text-slate-500 text-xs mono">with @yourhandle MCP</div>
+                                    </div>
+                                </div>
+                                <!-- Chat Messages -->
+                                <div class="p-4 space-y-4 min-h-[380px] bg-gradient-to-b from-slate-950 to-slate-900">
+                                    <!-- User Message -->
+                                    <div class="flex justify-end">
+                                        <div
+                                            class="bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-md text-sm max-w-[85%]">
+                                            What does @yourhandle think about serverless?
+                                        </div>
+                                    </div>
+                                    <!-- AI Response -->
+                                    <div class="flex justify-start">
+                                        <div
+                                            class="bg-slate-800 text-slate-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm max-w-[90%] space-y-3">
+                                            <p>Based on their posts, they're bullish on serverless for MVPs but
+                                                recommend containers for:</p>
+                                            <ul class="text-slate-400 text-xs space-y-1 pl-3">
+                                                <li>• High-traffic APIs</li>
+                                                <li>• Long-running jobs</li>
+                                                <li>• Cost predictability</li>
+                                            </ul>
+                                            <!-- Embedded Tweet -->
+                                            <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-2">
+                                                <div class="flex items-center gap-2 mb-2">
+                                                    <div class="w-6 h-6 rounded-full bg-slate-700"></div>
+                                                    <span class="text-slate-300 text-xs font-medium">@yourhandle</span>
+                                                    <svg class="w-4 h-4 text-slate-500 ml-auto" viewBox="0 0 24 24"
+                                                        fill="currentColor">
+                                                        <path
+                                                            d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                                                    </svg>
+                                                </div>
+                                                <p class="text-slate-400 text-xs leading-relaxed">"Hot take: serverless
+                                                    is perfect for 0→1. But the moment you hit real scale, containers
+                                                    win on both cost and control."</p>
+                                                <div class="flex gap-4 mt-2 text-slate-600 text-xs">
+                                                    <span>♡ 847</span>
+                                                    <span>↻ 132</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Typing Indicator -->
+                                    <div class="flex justify-start">
+                                        <div class="bg-slate-800 px-4 py-2 rounded-2xl rounded-bl-md">
+                                            <div class="flex gap-1">
+                                                <div class="w-2 h-2 bg-slate-500 rounded-full"
+                                                    style="animation: subtle-pulse 1s ease-in-out infinite;"></div>
+                                                <div class="w-2 h-2 bg-slate-500 rounded-full"
+                                                    style="animation: subtle-pulse 1s ease-in-out infinite; animation-delay: 0.2s;">
+                                                </div>
+                                                <div class="w-2 h-2 bg-slate-500 rounded-full"
+                                                    style="animation: subtle-pulse 1s ease-in-out infinite; animation-delay: 0.4s;">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Chat Input -->
+                                <div class="bg-slate-900 px-4 py-3 border-t border-slate-800">
+                                    <div class="bg-slate-800 rounded-full px-4 py-2 text-slate-500 text-sm">Ask
+                                        anything...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Phone Button -->
+                        <div class="absolute right-0 top-28 w-1 h-12 bg-slate-700 rounded-l"></div>
+                        <div class="absolute left-0 top-20 w-1 h-8 bg-slate-700 rounded-r"></div>
+                        <div class="absolute left-0 top-32 w-1 h-12 bg-slate-700 rounded-r"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scroll Indicator -->
+        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 hidden lg:block">
+            <div class="w-5 h-9 border border-slate-600 rounded-full flex items-start justify-center p-1.5 opacity-60">
+                <div class="w-1 h-2 bg-slate-500 rounded-full" style="animation: subtle-pulse 2s ease-in-out infinite;">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Creator Benefits Section -->
+    <section class="relative py-24 border-t border-slate-800/50">
+        <div class="container mx-auto px-6">
+            <div class="max-w-5xl mx-auto">
+                <!-- Section Header -->
+                <div class="text-center mb-12">
+                    <div class="greek-ornament inline-block px-12 py-3 mb-6">
+                        <div class="mono text-xs text-slate-500 tracking-widest">FOR CREATORS</div>
+                    </div>
+                    <h2 class="text-4xl md:text-5xl font-bold serif text-slate-200 mb-4">
+                        Your Content, <span class="text-blue-400">Always Working</span>
+                    </h2>
+                    <p class="text-lg text-slate-400 max-w-xl mx-auto serif">
+                        Every post becomes discoverable by AI agents worldwide
+                    </p>
+                </div>
+
+                <!-- Benefits Grid -->
+                <div class="grid md:grid-cols-2 gap-px bg-slate-700/30 border border-slate-700/50">
+                    <!-- Benefit 1 -->
+                    <div class="bg-slate-950 p-8 flex gap-5">
+                        <svg class="w-7 h-7 text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor"
+                            stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+                        </svg>
+                        <div>
+                            <h3 class="text-base font-semibold serif text-slate-200 mb-1">Passive Discovery</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">
+                                AI surfaces your posts when users ask about your topics. <span class="text-blue-400">New
+                                    followers find you</span> without you lifting a finger.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Benefit 2 -->
+                    <div class="bg-slate-950 p-8 flex gap-5">
+                        <svg class="w-7 h-7 text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor"
+                            stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                        </svg>
+                        <div>
+                            <h3 class="text-base font-semibold serif text-slate-200 mb-1">Qualified Audience</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">
+                                People finding you via MCP are <span class="text-slate-200">actively researching</span>
+                                — not scrolling. Higher intent, better conversions.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Benefit 3 -->
+                    <div class="bg-slate-950 p-8 flex gap-5">
+                        <svg class="w-7 h-7 text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor"
+                            stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                            <h3 class="text-base font-semibold serif text-slate-200 mb-1">Monetize Your Knowledge</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">
+                                Gate premium content behind <span class="text-blue-400">paid MCP access</span>. Your
+                                threads and insights, delivered on demand.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Benefit 4 -->
+                    <div class="bg-slate-950 p-8 flex gap-5">
+                        <svg class="w-7 h-7 text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor"
+                            stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                        </svg>
+                        <div>
+                            <h3 class="text-base font-semibold serif text-slate-200 mb-1">Zero Extra Work</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">
+                                Connect once, <span class="text-slate-200">sync forever</span>. Keep posting normally —
+                                your MCP updates automatically.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tagline -->
+                <div class="text-center">
+                    <p class="text-lg text-slate-500 serif italic">
+                        AI is the new search. Be where your audience is going.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <!-- <section class="relative py-24 border-t border-slate-800/50">
+        <div class="container mx-auto px-6">
+    <div class="text-center mb-12">
+        <div class="greek-ornament inline-block px-12 py-3 mb-6">
+            <div class="mono text-xs text-slate-500 tracking-widest">HOW IT WORKS</div>
+        </div>
+        <h2 class="text-4xl md:text-5xl font-bold serif text-slate-200 mb-4">
+            The Six Pillars
+        </h2>
+    </div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">I. SYNTHESIS</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">Instant Connection</h3>
+            <p class="text-slate-400 text-sm serif">
+                Connect 𝕏, deploy your MCP. <span class="text-blue-400">Live in moments.</span>
+            </p>
+        </div>
+
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">II. GNOSIS</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">Deep Context</h3>
+            <p class="text-slate-400 text-sm serif">
+                Your <span class="text-slate-200">complete archive</span>: posts, threads, replies. All searchable.
+            </p>
+        </div>
+
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">III. KOINONIA</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">Common Ground</h3>
+            <p class="text-slate-400 text-sm serif">
+                AI finds <span class="text-blue-400">shared interests</span> between you and others instantly.
+            </p>
+        </div>
+
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">IV. ARCANUM</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">Your Control</h3>
+            <p class="text-slate-400 text-sm serif">
+                Toggle visibility anytime. <span class="text-slate-200">Your data, your rules.</span>
+            </p>
+        </div>
+
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">V. DIALEKTIKE</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">AI Dialogue</h3>
+            <p class="text-slate-400 text-sm serif">
+                Agents that <span class="text-blue-400">understand your voice</span> and can speak for you.
+            </p>
+        </div>
+
+        <div
+            class="relative bg-slate-900/30 border border-slate-700/50 p-6 backdrop-blur-sm hover:border-slate-500 transition-all duration-300 column-decoration">
+            <div class="pillar-cap mb-4"></div>
+            <svg class="w-8 h-8 text-blue-400 mb-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <div class="mono text-xs text-slate-500 mb-2 tracking-wider">VI. AIONIOS</div>
+            <h3 class="text-xl font-semibold serif text-slate-200 mb-2">Always Current</h3>
+            <p class="text-slate-400 text-sm serif">
+                Auto-syncs as you post. <span class="text-slate-200">Always up to date.</span>
+            </p>
+        </div>
+    </div>
+    </div>
+</section> -->
+
+    <!-- Venn Diagram Section -->
+    <!-- <section class="relative py-24 border-t border-slate-800/50 marble-texture">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col lg:flex-row items-center gap-16 max-w-6xl mx-auto">
+                <div class="flex-1 w-full">
+                    <svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"
+                        class="w-full max-w-xl mx-auto opacity-80">
+                        <defs>
+                            <filter id="subtle-glow">
+                                <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <circle cx="140" cy="150" r="100" fill="rgba(148, 163, 184, 0.08)" stroke="#64748b"
+                            stroke-width="2" filter="url(#subtle-glow)" />
+                        <circle cx="260" cy="150" r="100" fill="rgba(96, 165, 250, 0.08)" stroke="#60a5fa"
+                            stroke-width="2" filter="url(#subtle-glow)" />
+                        <ellipse cx="200" cy="150" rx="50" ry="100" fill="rgba(148, 163, 184, 0.15)"
+                            filter="url(#subtle-glow)" />
+                        <text x="90" y="155" fill="#94a3b8" font-size="18" font-weight="600"
+                            font-family="Cormorant Garamond, serif">SELF</text>
+                        <text x="248" y="155" fill="#60a5fa" font-size="18" font-weight="600"
+                            font-family="Cormorant Garamond, serif">OTHER</text>
+                        <text x="168" y="155" fill="#cbd5e1" font-size="14" font-weight="600"
+                            font-family="Cormorant Garamond, serif">TRUTH</text>
+                    </svg>
+                </div>
+
+                <div class="flex-1">
+                    <div class="greek-ornament inline-block px-8 py-2 mb-6">
+                        <div class="mono text-xs text-slate-500 tracking-widest">THEOREM</div>
+                    </div>
+                    <h2 class="text-4xl md:text-5xl font-bold serif text-slate-200 mb-8 leading-tight">
+                        Discover the <span class="text-blue-400">Shared Logos</span>
+                    </h2>
+                    <div class="space-y-6 text-lg text-slate-400 leading-relaxed serif">
+                        <p>
+                            As Socrates sought truth through <span class="italic">dialectic</span>,
+                            so must we uncover the <span class="text-slate-200 font-semibold">intersection of
+                                understanding</span> between minds.
+                        </p>
+                        <p>
+                            With grokthyself, intelligence <span class="text-blue-400">illuminates this nexus</span>
+                            faster than mortal cognition,
+                            guiding you to those who share your pursuit of wisdom.
+                        </p>
+                        <div class="border-l-2 border-slate-600 pl-6 py-4 bg-slate-900/20 italic">
+                            <p class="text-slate-300">
+                                "The beginning of wisdom is the definition of terms."
+                            </p>
+                            <p class="text-sm text-slate-500 mt-2 not-italic mono">
+                                — Socrates
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section> -->
+
+    <!-- Pricing Section -->
+    <section class="relative py-24 border-t border-slate-800/50">
+        <div class="container mx-auto px-6">
+            <div class="max-w-4xl mx-auto">
+                <!-- Header -->
+                <div class="text-center mb-12">
+                    <div class="greek-ornament inline-block px-12 py-3 mb-6">
+                        <div class="mono text-xs text-slate-500 tracking-widest">PRICING</div>
+                    </div>
+                    <h2 class="text-4xl md:text-5xl font-bold serif text-slate-200 mb-4">Choose Your Path</h2>
+                </div>
+
+                <!-- Pricing Cards -->
+                <div class="grid md:grid-cols-2 gap-8">
+                    <!-- Starter Tier -->
+                    <div class="bg-slate-900/50 border border-slate-700 p-8 backdrop-blur-sm">
+                        <div class="text-center mb-6">
+                            <h3 class="text-2xl font-bold serif text-slate-200 mb-2">Starter</h3>
+                            <div class="text-5xl font-bold serif text-slate-200 mb-1">$29</div>
+                            <p class="text-slate-500 mono text-sm">per month</p>
+                        </div>
+
+                        <ul class="space-y-3 mb-8 serif">
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Personal MCP endpoint</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Full post history sync</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Real-time updates</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300 font-semibold">1,000 API calls/month</span>
+                            </li>
+                        </ul>
+
+                        <a href="/login" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 px-6 py-3 font-semibold transition-colors block text-center mono">
+                            Get Started
+                        </a>
+                    </div>
+
+                    <!-- Pro Tier -->
+                    <div class="bg-slate-900/50 border-2 border-blue-500/50 p-8 backdrop-blur-sm relative border-glow">
+                        <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                            <span class="bg-blue-500 text-white px-4 py-1 text-sm font-semibold mono">UNLIMITED</span>
+                        </div>
+
+                        <div class="text-center mb-6 mt-4">
+                            <h3 class="text-2xl font-bold serif text-slate-200 mb-2">Pro</h3>
+                            <div class="text-5xl font-bold text-blue-400 serif mb-1">$199</div>
+                            <p class="text-slate-500 mono text-sm">per month</p>
+                        </div>
+
+                        <ul class="space-y-3 mb-8 serif">
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Personal MCP endpoint</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Full post history sync</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Real-time updates</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300 font-semibold text-blue-400">Unlimited API calls</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <span class="text-blue-400">◆</span>
+                                <span class="text-slate-300">Priority support</span>
+                            </li>
+                        </ul>
+
+                        <a href="/login" class="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-semibold transition-colors block text-center mono">
+                            Go Pro
+                        </a>
+                    </div>
+                </div>
+
+                <!-- FAQ Section -->
+                <div class="bg-slate-900/30 border border-slate-700/50 p-8 mt-12">
+                    <h3 class="text-2xl font-bold text-center mb-8 serif text-slate-200">Frequently Asked Questions</h3>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">How does it work?</h4>
+                            <p class="text-slate-400 text-sm serif">We analyze your X posts to create an MCP that AI agents can query. Your knowledge becomes discoverable.</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">Is my data safe?</h4>
+                            <p class="text-slate-400 text-sm serif">We only access your public posts. No DMs, likes, or private data.</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">What is an MCP?</h4>
+                            <p class="text-slate-400 text-sm serif">Model Context Protocol — a standard that lets AI agents access your knowledge and voice.</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">Does it stay updated?</h4>
+                            <p class="text-slate-400 text-sm serif">Yes! Your MCP automatically syncs as you post new content on X.</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">What if I have few posts?</h4>
+                            <p class="text-slate-400 text-sm serif">Even with limited posts, we can create an MCP. The more you've shared, the richer it becomes.</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <h4 class="font-semibold text-slate-200 serif">Can I switch plans?</h4>
+                            <p class="text-slate-400 text-sm serif">Yes! Upgrade or downgrade anytime. Changes take effect on your next billing cycle.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final Quote Section -->
+    <section class="relative py-24 border-t border-slate-800/50">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center">
+                <img src="/head.svg" alt="Philosophical head illustration" class="w-32 h-32 mx-auto mb-8 opacity-60"
+                    style="animation: float 6s ease-in-out infinite;">
+                <blockquote class="serif text-3xl md:text-4xl text-slate-300 italic leading-relaxed mb-8">
+                    "I cannot teach anybody anything. I can only make them think."
+                </blockquote>
+                <p class="mono text-sm text-slate-500">
+                    — Socrates
+                </p>
+                <div class="mt-12 text-slate-400 serif">
+                    <p>Let <span class="text-blue-400">grokthyself</span> share your thinking with the world.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="relative py-12 border-t border-slate-800/50">
+        <div class="container mx-auto px-6">
+            <div class="text-center">
+                <!-- Logo -->
+                <div class="text-3xl font-bold serif text-slate-300 mb-6">grokthyself</div>
+
+                <!-- Greek Subtitle -->
+                <div class="text-sm text-slate-500 mb-8 serif italic">
+                    γνῶθι σεαυτόν — Know Thyself
+                </div>
+
+                <!-- Ornamental Divider -->
+                <div class="flex items-center justify-center gap-4 mb-8">
+                    <div class="scroll-ornament w-20"></div>
+                    <span class="text-slate-700 text-lg">◆</span>
+                    <div class="scroll-ornament w-20"></div>
+                </div>
+
+                <!-- Links -->
+                <div class="flex flex-wrap justify-center gap-6 mb-8 text-slate-400 mono text-sm">
+                    <a href="/privacy" class="hover:text-slate-200 transition-colors">Privacy</a>
+                    <span class="text-slate-700">|</span>
+                    <a href="/terms" class="hover:text-slate-200 transition-colors">Terms</a>
+                    <span class="text-slate-700">|</span>
+                    <a href="https://x.com/janwilmake" class="hover:text-slate-200 transition-colors">Contact</a>
+                </div>
+
+                <!-- Copyright -->
+                <div class="text-slate-600 text-sm serif">
+                    <p>&copy; 2026 grokthyself. Built for <span class="text-blue-400">meaningful connection</span>.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+</body>
+
+</html>

@@ -31,7 +31,7 @@ const ADMIN_USERNAME = "janwilmake";
 
 type Env = {
   USER_DO: DurableObjectNamespace<UserDO & QueryableHandler>;
-  X_API_KEY: string;
+  TWITTERAPI_SECRET: string;
   STRIPE_WEBHOOK_SIGNING_SECRET: string;
   STRIPE_SECRET: string;
 };
@@ -315,7 +315,7 @@ interface McpResponse {
 export async function handleMcp(
   request: Request,
   env: Env,
-  ctx: UserContext
+  ctx: UserContext,
 ): Promise<Response> {
   const url = new URL(request.url);
 
@@ -340,7 +340,7 @@ export async function handleMcp(
   }
 
   const targetStub = env.USER_DO.get(
-    env.USER_DO.idFromName(DO_NAME_PREFIX + targetUsername)
+    env.USER_DO.idFromName(DO_NAME_PREFIX + targetUsername),
   );
 
   const targetStats = await targetStub.getUserStats();
@@ -351,8 +351,8 @@ export async function handleMcp(
   const canChat = isSelf
     ? true
     : targetStats?.isPremium && targetStats?.isPublic
-    ? true
-    : false;
+      ? true
+      : false;
 
   if (!canChat) {
     return new Response("MCP Not found for this user", { status: 404 });
@@ -435,7 +435,7 @@ export async function handleMcp(
               "Content-Type": "application/json",
               "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
 
       case "resources/list":
@@ -466,7 +466,7 @@ export async function handleMcp(
               "Content-Type": "application/json",
               "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
 
       case "resources/read":
@@ -495,15 +495,14 @@ export async function handleMcp(
                 ],
               },
             }),
-            { headers: { "Content-Type": "application/json" } }
+            { headers: { "Content-Type": "application/json" } },
           );
         }
 
         if (uri === "system.md") {
           try {
-            const systemPrompt = await targetStub.getSystemPrompt(
-              loggedUsername
-            );
+            const systemPrompt =
+              await targetStub.getSystemPrompt(loggedUsername);
             return new Response(
               JSON.stringify({
                 jsonrpc: "2.0",
@@ -523,7 +522,7 @@ export async function handleMcp(
                   "Content-Type": "application/json",
                   "Access-Control-Allow-Origin": "*",
                 },
-              }
+              },
             );
           } catch (error) {
             return new Response(
@@ -540,7 +539,7 @@ export async function handleMcp(
                   "Content-Type": "application/json",
                   "Access-Control-Allow-Origin": "*",
                 },
-              }
+              },
             );
           }
         }
@@ -556,7 +555,7 @@ export async function handleMcp(
               "Content-Type": "application/json",
               "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
 
       case "tools/list":
@@ -652,7 +651,7 @@ export async function handleMcp(
                 args,
                 env,
                 ctx,
-                targetStub
+                targetStub,
               );
               break;
             case "getSystemPrompt":
@@ -661,7 +660,7 @@ export async function handleMcp(
                 args,
                 env,
                 ctx,
-                targetStub
+                targetStub,
               );
               break;
 
@@ -671,7 +670,7 @@ export async function handleMcp(
                 args,
                 env,
                 ctx,
-                targetStub
+                targetStub,
               );
               break;
             default:
@@ -759,7 +758,7 @@ export async function handleGetSystemPromptTool(
   args: any,
   env: Env,
   ctx: UserContext,
-  stub: DurableObjectStub<UserDO & QueryableHandler>
+  stub: DurableObjectStub<UserDO & QueryableHandler>,
 ): Promise<ToolResponse> {
   try {
     const systemPrompt = await stub.getSystemPrompt(ctx.user?.username);
@@ -820,7 +819,7 @@ export async function handleSelectEvidenceTool(
   args: { ids: string[]; prompt: string; reasoning: string },
   env: Env,
   ctx: UserContext,
-  stub: any
+  stub: any,
 ): Promise<ToolResponse> {
   try {
     const { ids, prompt, reasoning } = args;
@@ -893,7 +892,7 @@ export async function handleSearchTool(
   args: { q: string; maxTokens?: string },
   env: Env,
   ctx: UserContext,
-  stub: any
+  stub: any,
 ): Promise<ToolResponse> {
   try {
     // Extract arguments
@@ -1024,19 +1023,19 @@ export class UserDO extends DurableObject<Env> {
 
     // Create index
     this.try(
-      `CREATE INDEX IF NOT EXISTS idx_evidence_username ON evidence (logged_username)`
+      `CREATE INDEX IF NOT EXISTS idx_evidence_username ON evidence (logged_username)`,
     );
 
     // Add new column migrations for users table
     this.try(`ALTER TABLE users ADD COLUMN is_public INTEGER DEFAULT 0`);
     this.try(`ALTER TABLE users ADD COLUMN is_featured INTEGER DEFAULT 0`);
     this.try(
-      `ALTER TABLE users ADD COLUMN history_max_count INTEGER DEFAULT ${FREE_MAX_HISTORIC_POSTS}`
+      `ALTER TABLE users ADD COLUMN history_max_count INTEGER DEFAULT ${FREE_MAX_HISTORIC_POSTS}`,
     );
     this.try(`ALTER TABLE users ADD COLUMN history_cursor TEXT`);
     this.try(`ALTER TABLE users ADD COLUMN history_count INTEGER DEFAULT 0`);
     this.try(
-      `ALTER TABLE users ADD COLUMN history_is_completed INTEGER DEFAULT 0`
+      `ALTER TABLE users ADD COLUMN history_is_completed INTEGER DEFAULT 0`,
     );
     this.try(`ALTER TABLE users ADD COLUMN synced_from TEXT`);
     this.try(`ALTER TABLE users ADD COLUMN synced_from_cursor TEXT`);
@@ -1059,16 +1058,16 @@ export class UserDO extends DurableObject<Env> {
     // Create indexes
     this.try(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts (user_id)`);
     this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_tweet_id ON posts (tweet_id)`
+      `CREATE INDEX IF NOT EXISTS idx_posts_tweet_id ON posts (tweet_id)`,
     );
     this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at)`
+      `CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at)`,
     );
     this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_author_created ON posts (author_username, created_at DESC)`
+      `CREATE INDEX IF NOT EXISTS idx_posts_author_created ON posts (author_username, created_at DESC)`,
     );
     this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_is_historic ON posts (is_historic)`
+      `CREATE INDEX IF NOT EXISTS idx_posts_is_historic ON posts (is_historic)`,
     );
   }
 
@@ -1091,14 +1090,14 @@ export class UserDO extends DurableObject<Env> {
     loggedUsername: string,
     prompt: string,
     reasoning: string,
-    ids: string[]
+    ids: string[],
   ): Promise<void> {
     this.sql.exec(
       `INSERT INTO evidence (logged_username, prompt, reasoning, ids) VALUES (?, ?, ?, ?)`,
       loggedUsername,
       prompt,
       reasoning,
-      JSON.stringify(ids)
+      JSON.stringify(ids),
     );
   }
 
@@ -1445,7 +1444,7 @@ export class UserDO extends DurableObject<Env> {
     FROM author_post_counts apc
     JOIN latest_author_posts lap ON apc.author_username = lap.author_username
     ORDER BY apc.post_count DESC
-  `
+  `,
       )
       .toArray();
 
@@ -1469,7 +1468,7 @@ export class UserDO extends DurableObject<Env> {
   private convertThreadToMarkdown(thread: ConversationThread): string {
     const sortedPosts = thread.posts.sort(
       (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
 
     let markdown = `# Thread\n\n`;
@@ -1491,7 +1490,7 @@ export class UserDO extends DurableObject<Env> {
   private addPaymentNoticeIfNeeded(
     markdown: string,
     user: User,
-    requestedUsername: string
+    requestedUsername: string,
   ): string {
     if (!user.is_premium && user.username === requestedUsername) {
       const paymentNotice = `
@@ -1519,7 +1518,7 @@ Upgrade to Premium for:
 
   async searchPosts(
     username: string | undefined,
-    searchQuery: PostSearchQuery
+    searchQuery: PostSearchQuery,
   ): Promise<string> {
     const user = this.sql.exec<User>(`SELECT * FROM users`).toArray()[0];
 
@@ -1567,8 +1566,8 @@ Upgrade to Premium for:
       new Set(
         conversationResults
           .map((row) => row.conversation_id)
-          .filter((id) => id && id.trim() !== "")
-      )
+          .filter((id) => id && id.trim() !== ""),
+      ),
     );
 
     if (conversationIds.length === 0) {
@@ -1582,7 +1581,7 @@ Upgrade to Premium for:
       .exec<Post>(
         `SELECT * FROM posts WHERE conversation_id IN (${conversationIds
           .map((x) => `'${x}'`)
-          .join(",")})`
+          .join(",")})`,
       )
       .toArray();
 
@@ -1622,23 +1621,23 @@ Upgrade to Premium for:
         totalTokens += thread.tokenCount;
       } else {
         console.log(
-          `Stopping at thread ${conversationId} to stay within token limit`
+          `Stopping at thread ${conversationId} to stay within token limit`,
         );
         break;
       }
     }
 
     console.log(
-      `Selected ${threads.length} threads with ~${totalTokens} tokens`
+      `Selected ${threads.length} threads with ~${totalTokens} tokens`,
     );
 
     // Sort threads by most recent post in each thread
     threads.sort((a, b) => {
       const latestA = Math.max(
-        ...a.posts.map((p) => new Date(p.created_at).getTime())
+        ...a.posts.map((p) => new Date(p.created_at).getTime()),
       );
       const latestB = Math.max(
-        ...b.posts.map((p) => new Date(p.created_at).getTime())
+        ...b.posts.map((p) => new Date(p.created_at).getTime()),
       );
       return latestB - latestA;
     });
@@ -1658,14 +1657,14 @@ Upgrade to Premium for:
 
   async ensureUserExists(u: string): Promise<User | null> {
     const data = await fetch(
-      `https://profile.grok-tools.com/${u}?secret=mysecret`
+      `https://profile.grok-tools.com/${u}?secret=mysecret`,
     ).then((res) =>
       res.json<{
         id?: string;
         userName?: string;
         error?: string;
         message?: string;
-      }>()
+      }>(),
     );
 
     const { id, userName: username, error, message } = data;
@@ -1684,7 +1683,7 @@ Upgrade to Premium for:
       this.sql.exec(
         `INSERT INTO users (id, username) VALUES (?, ?)`,
         id,
-        username
+        username,
       );
     }
 
@@ -1700,7 +1699,7 @@ Upgrade to Premium for:
       console.log(`Starting initial sync for user ${username}`);
       this.sql.exec(
         `UPDATE users SET scrape_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        id
+        id,
       );
 
       // Start sync
@@ -1723,7 +1722,7 @@ Upgrade to Premium for:
 
     this.sql.exec(
       `UPDATE users SET scrape_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
-      username
+      username,
     );
 
     await this.performSync(user.id, user.username);
@@ -1768,7 +1767,7 @@ Upgrade to Premium for:
         console.log(`User ${username} has no balance, stopping sync`);
         this.sql.exec(
           `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          userId
+          userId,
         );
         return;
       }
@@ -1785,14 +1784,14 @@ Upgrade to Premium for:
         console.log(`No sync needed for ${username}`);
         this.sql.exec(
           `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          userId
+          userId,
         );
       }
     } catch (error) {
       console.error(`Sync failed for user ${username}:`, error);
       this.sql.exec(
         `UPDATE users SET scrape_status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        userId
+        userId,
       );
     }
   }
@@ -1829,7 +1828,7 @@ Upgrade to Premium for:
     // Fetch posts going backwards from cursor
     const postsResponse = await this.fetchUserPosts(
       user.username,
-      user.history_cursor
+      user.history_cursor,
     );
 
     if (
@@ -1837,7 +1836,7 @@ Upgrade to Premium for:
       !postsResponse.data?.tweets?.length
     ) {
       console.log(
-        `No more historic posts found for ${user.username} (history_is_completed=1)`
+        `No more historic posts found for ${user.username} (history_is_completed=1)`,
       );
       // Mark history as completed
       this.sql.exec(
@@ -1847,7 +1846,7 @@ Upgrade to Premium for:
           scrape_status = 'completed',
           updated_at = CURRENT_TIMESTAMP 
          WHERE id = ?`,
-        user.id
+        user.id,
       );
       return;
     }
@@ -1877,7 +1876,7 @@ Upgrade to Premium for:
               threadResponse.tweets.map(async (reply) => {
                 await this.storePost(user.id, reply, true);
                 return 1;
-              })
+              }),
             );
             postsProcessed += threadResponse.tweets.length;
           }
@@ -1895,7 +1894,7 @@ Upgrade to Premium for:
     const processingResults = await Promise.all(tweetProcessingPromises);
     const totalPostsProcessed = processingResults.reduce(
       (sum, count) => sum + count,
-      0
+      0,
     );
 
     // Calculate cost and deduct from balance
@@ -1906,7 +1905,7 @@ Upgrade to Premium for:
     console.log(
       `Historic sync: processed ${totalPostsProcessed} posts, cost: $${
         cost / 100
-      }, new count: ${newHistoryCount}/${user.history_max_count}`
+      }, new count: ${newHistoryCount}/${user.history_max_count}`,
     );
 
     // Update user record
@@ -1922,7 +1921,7 @@ Upgrade to Premium for:
       newBalance,
       newHistoryCount,
       postsResponse.next_cursor || oldestTweet.id,
-      user.id
+      user.id,
     );
 
     // Check if we should continue historic sync
@@ -1936,14 +1935,14 @@ Upgrade to Premium for:
       await this.ctx.storage.setAlarm(Date.now() + 1000);
     } else {
       console.log(
-        `Historic sync completed (stopped, not done) for ${user.username}`
+        `Historic sync completed (stopped, not done) for ${user.username}`,
       );
       this.sql.exec(
         `UPDATE users SET 
           scrape_status = 'completed',
           updated_at = CURRENT_TIMESTAMP 
          WHERE id = ?`,
-        user.id
+        user.id,
       );
     }
   }
@@ -1957,7 +1956,7 @@ Upgrade to Premium for:
       this.sql.exec(
         `UPDATE users SET synced_until = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         now,
-        user.id
+        user.id,
       );
       user.synced_until = now;
     }
@@ -1965,7 +1964,7 @@ Upgrade to Premium for:
     // Fetch recent posts (no cursor = get latest)
     const postsResponse = await this.fetchUserPosts(
       user.username,
-      user.synced_from_cursor
+      user.synced_from_cursor,
     );
 
     if (
@@ -1975,7 +1974,7 @@ Upgrade to Premium for:
       console.log(`No new posts found for frontfill sync for ${user.username}`);
       this.sql.exec(
         `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        user.id
+        user.id,
       );
       return;
     }
@@ -2002,7 +2001,7 @@ Upgrade to Premium for:
               threadResponse.tweets.map(async (reply) => {
                 await this.storePost(user.id, reply, false);
                 return 1;
-              })
+              }),
             );
             postsProcessed += threadResponse.tweets.length;
           }
@@ -2020,7 +2019,7 @@ Upgrade to Premium for:
     const processingResults = await Promise.all(tweetProcessingPromises);
     const totalPostsProcessed = processingResults.reduce(
       (sum, count) => sum + count,
-      0
+      0,
     );
 
     // Calculate cost and deduct from balance
@@ -2030,7 +2029,7 @@ Upgrade to Premium for:
     console.log(
       `Frontfill sync: processed ${totalPostsProcessed} posts, cost: $${
         cost / 100
-      }`
+      }`,
     );
 
     // Update synced_from to the newest tweet's date
@@ -2040,7 +2039,7 @@ Upgrade to Premium for:
     // Check if we've reached the overlap point
     const syncedUntilDate = new Date(user.synced_until);
     const overlapDate = new Date(
-      syncedUntilDate.getTime() - SYNC_OVERLAP_HOURS * 60 * 60 * 1000
+      syncedUntilDate.getTime() - SYNC_OVERLAP_HOURS * 60 * 60 * 1000,
     );
     const oldestTweetDate = new Date(oldestTweet.createdAt);
 
@@ -2055,10 +2054,10 @@ Upgrade to Premium for:
           updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         newBalance,
-        user.id
+        user.id,
       );
       console.log(
-        `Frontfill sync completed (reached overlap) for ${user.username}`
+        `Frontfill sync completed (reached overlap) for ${user.username}`,
       );
     } else {
       // Continue frontfill sync
@@ -2070,7 +2069,7 @@ Upgrade to Premium for:
          WHERE id = ?`,
         newBalance,
         postsResponse.next_cursor || oldestTweet.id,
-        user.id
+        user.id,
       );
 
       // Check if we should continue
@@ -2079,11 +2078,11 @@ Upgrade to Premium for:
         await this.ctx.storage.setAlarm(Date.now() + 1000);
       } else {
         console.log(
-          `Frontfill sync completed (no balance/pages) for ${user.username}`
+          `Frontfill sync completed (no balance/pages) for ${user.username}`,
         );
         this.sql.exec(
           `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          user.id
+          user.id,
         );
       }
     }
@@ -2091,7 +2090,7 @@ Upgrade to Premium for:
 
   private async fetchUserPosts(
     username: string,
-    cursor?: string | null
+    cursor?: string | null,
   ): Promise<TwitterAPIResponse> {
     let url = `https://api.twitterapi.io/twitter/user/last_tweets?userName=${username}&includeReplies=true`;
 
@@ -2103,7 +2102,7 @@ Upgrade to Premium for:
 
     const response = await fetch(url, {
       headers: {
-        "X-API-Key": this.env.X_API_KEY,
+        "X-API-Key": this.env.TWITTERAPI_SECRET,
       },
     });
 
@@ -2111,10 +2110,10 @@ Upgrade to Premium for:
       const errorText = await response.text();
       console.error(
         `Failed to fetch posts: ${response.status} ${response.statusText}`,
-        errorText
+        errorText,
       );
       throw new Error(
-        `Failed to fetch posts: ${response.status} ${response.statusText}`
+        `Failed to fetch posts: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -2124,14 +2123,14 @@ Upgrade to Premium for:
 
   private async fetchThreadContext(
     tweetId: string,
-    cursor?: string
+    cursor?: string,
   ): Promise<ThreadContextResponse> {
     const baseUrl = `https://api.twitterapi.io/twitter/tweet/thread_context?tweetId=${tweetId}`;
     const url = cursor ? `${baseUrl}&cursor=${cursor}` : baseUrl;
 
     const response = await fetch(url, {
       headers: {
-        "X-API-Key": this.env.X_API_KEY,
+        "X-API-Key": this.env.TWITTERAPI_SECRET,
       },
     });
 
@@ -2139,10 +2138,10 @@ Upgrade to Premium for:
       const errorText = await response.text();
       console.error(
         `Failed to fetch thread: ${response.status} ${response.statusText}`,
-        errorText
+        errorText,
       );
       throw new Error(
-        `Failed to fetch thread: ${response.status} ${response.statusText}`
+        `Failed to fetch thread: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -2153,7 +2152,7 @@ Upgrade to Premium for:
       try {
         const nextPageData = await this.fetchThreadContext(
           tweetId,
-          data.next_cursor
+          data.next_cursor,
         );
 
         return {
@@ -2165,7 +2164,7 @@ Upgrade to Premium for:
       } catch (error) {
         console.error(
           `Failed to fetch next page for thread ${tweetId}:`,
-          error
+          error,
         );
         return data;
       }
@@ -2222,7 +2221,7 @@ Upgrade to Premium for:
             }
             return "";
           })
-          .filter((item) => item.length > 0)
+          .filter((item) => item.length > 0),
       );
 
       mediaItems.push(...Array.from(uniqueMedia));
@@ -2263,7 +2262,7 @@ Upgrade to Premium for:
   private async storePost(
     userId: string,
     tweet: Tweet,
-    isHistoric: boolean = false
+    isHistoric: boolean = false,
   ): Promise<void> {
     try {
       const formattedText = this.formatTweetText(tweet);
@@ -2305,7 +2304,7 @@ Upgrade to Premium for:
         tweet.author?.isBlueVerified ? 1 : 0,
         tweet.bookmarkCount || 0,
         tweet.viewCount || 0,
-        isHistoric ? 1 : 0
+        isHistoric ? 1 : 0,
       );
     } catch (error) {
       console.error(`Failed to store post ${tweet.id}:`, error);
@@ -2325,7 +2324,7 @@ Upgrade to Premium for:
     const lastPost: Post | null = this.sql
       .exec<Post>(
         `SELECT * FROM posts WHERE author_username=? ORDER BY created_at DESC LIMIT 0,1`,
-        user.username
+        user.username,
       )
       .toArray()[0];
 
@@ -2364,7 +2363,7 @@ Upgrade to Premium for:
 
 async function handleStripeWebhook(
   request: Request,
-  env: Env
+  env: Env,
 ): Promise<Response> {
   if (!request.body) {
     return new Response(JSON.stringify({ error: "No body" }), {
@@ -2393,7 +2392,7 @@ async function handleStripeWebhook(
     event = await stripe.webhooks.constructEventAsync(
       rawBodyString,
       stripeSignature,
-      env.STRIPE_WEBHOOK_SIGNING_SECRET
+      env.STRIPE_WEBHOOK_SIGNING_SECRET,
     );
   } catch (err) {
     console.log("WEBHOOK ERR", err.message);
@@ -2423,7 +2422,7 @@ async function handleStripeWebhook(
     }
 
     const userDO = env.USER_DO.get(
-      env.USER_DO.idFromName(DO_NAME_PREFIX + username)
+      env.USER_DO.idFromName(DO_NAME_PREFIX + username),
     );
 
     // Update balance, premium status, and history limits
@@ -2435,7 +2434,7 @@ async function handleStripeWebhook(
        WHERE username = ?`,
       amount_total,
       PREMIUM_MAX_HISTORIC_POSTS,
-      username
+      username,
     );
 
     // Start sync after payment
@@ -2450,42 +2449,43 @@ async function handleStripeWebhook(
 const statsPage = (
   username: string,
   stats: AuthorStats[],
-  userStats?: { isPremium: boolean; historyCount: number }
+  userStats?: { isPremium: boolean; historyCount: number } | null,
 ) => `<!DOCTYPE html>
-<html lang="en" class="bg-white">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Analytics - @${username} - CloneChat</title>
+    <title>Neural Analytics - @${username} - grokthyself</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        telegram: '#0088cc',
-                        'telegram-dark': '#006ba6',
-                        'telegram-light': '#e1f5ff',
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
-        body {
-            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        .serif { font-family: 'Cormorant Garamond', serif; }
+        .mono { font-family: 'Space Mono', monospace; }
+
+        @keyframes grid-move {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
         }
 
-        .gradient-bg {
-            background: linear-gradient(135deg, #0088cc 0%, #006ba6 100%);
+        .cyber-grid {
+            background-image:
+                linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 30s linear infinite;
         }
 
-        .glass {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 136, 204, 0.1);
+        .pillar-cap {
+            border-top: 3px solid rgba(148, 163, 184, 0.3);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            height: 4px;
+            margin-bottom: 8px;
+        }
+
+        .scroll-ornament {
+            background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.2) 50%, transparent 100%);
+            height: 1px;
         }
 
         .interaction-card {
@@ -2494,8 +2494,8 @@ const statsPage = (
         }
 
         .interaction-card:hover {
+            border-color: rgba(148, 163, 184, 0.5);
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 136, 204, 0.15);
         }
 
         .bio-text {
@@ -2503,18 +2503,12 @@ const statsPage = (
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            text-overflow: ellipsis;
-            line-height: 1.4;
-            max-height: 2.8em;
         }
 
         .modal-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
             z-index: 1000;
             display: none;
             align-items: center;
@@ -2523,8 +2517,8 @@ const statsPage = (
         }
 
         .modal-content {
-            background: white;
-            border-radius: 1rem;
+            background: #1e293b;
+            border: 1px solid rgba(148, 163, 184, 0.3);
             width: 90vw;
             max-width: 900px;
             max-height: 80vh;
@@ -2534,23 +2528,21 @@ const statsPage = (
 
         .modal-text {
             flex: 1;
-            background: #f8fafc;
-            color: #334155;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #0f172a;
+            color: #94a3b8;
+            font-family: 'Space Mono', monospace;
             font-size: 0.875rem;
             min-height: 300px;
             padding: 1rem;
             overflow-y: auto;
             white-space: pre-wrap;
-            word-wrap: break-word;
-            border: none;
+            border: 1px solid rgba(148, 163, 184, 0.2);
             resize: none;
-            border-radius: 0.5rem;
         }
 
         .loading-spinner {
-            border: 2px solid #e2e8f0;
-            border-top: 2px solid #0088cc;
+            border: 2px solid rgba(148, 163, 184, 0.2);
+            border-top: 2px solid #60a5fa;
             border-radius: 50%;
             width: 1rem;
             height: 1rem;
@@ -2565,191 +2557,122 @@ const statsPage = (
         }
     </style>
 </head>
-<body class="bg-gray-50">
-    <main class="min-h-screen px-4 py-6">
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
+    <div class="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
+
+    <main class="relative z-10 min-h-screen px-4 py-8">
         <div class="max-w-6xl mx-auto">
             <!-- Header -->
-            <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center justify-between mb-10">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Chat Analytics</h1>
-                    <p class="text-gray-600">@${username}'s conversation data</p>
+                    <h1 class="text-4xl font-bold serif text-slate-200 mb-2">Neural Analytics</h1>
+                    <p class="text-slate-500 mono">@${username}'s conversation map</p>
                 </div>
-                <a href="/dashboard" class="text-telegram hover:text-telegram-dark font-medium flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                    </svg>
-                    Back to Dashboard
+                <a href="/dashboard" class="text-slate-400 hover:text-slate-200 transition-colors mono text-sm flex items-center gap-2">
+                    ← Back to Dashboard
                 </a>
             </div>
 
-            ${
-              userStats &&
-              !userStats.isPremium &&
-              userStats.historyCount >= 2000
-                ? `
-            <!-- Limited History Banner -->
-            <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-6 mb-8">
-                <div class="flex items-start gap-4">
-                    <div class="text-3xl">📊</div>
-                    <div class="flex-1">
-                        <h3 class="text-lg font-semibold text-yellow-800 mb-2">Limited Analytics View</h3>
-                        <p class="text-yellow-700 mb-4">
-                            You're viewing data from your first 2,000 posts. Upgrade to Premium to analyze up to 100,000 posts 
-                            for complete conversation insights with everyone you've engaged with.
-                        </p>
-                        <a href="/dashboard" class="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-full font-medium transition-colors">
-                            <span>🚀</span>
-                            Upgrade to Premium
-                        </a>
-                    </div>
-                </div>
-            </div>
-            `
-                : ""
-            }
+            <!-- Ornamental Divider -->
+            <div class="scroll-ornament mb-10"></div>
 
-            <div class="bg-white rounded-2xl p-6 shadow-sm">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center">
-                        <span class="text-white font-bold">📊</span>
-                    </div>
-                    <h3 class="text-xl font-semibold text-gray-900">Top Conversation Partners</h3>
-                </div>
-                
+            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm">
+                <div class="pillar-cap"></div>
+                <div class="mono text-xs text-slate-500 tracking-widest mb-2">CONVERSATION PARTNERS</div>
+                <h3 class="text-2xl font-bold serif text-slate-200 mb-8">Top Interactions</h3>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     ${stats
                       .map(
                         (author, index) => `
-                        <div class="interaction-card bg-gray-50 rounded-xl p-4 border border-gray-200" onclick="openModal('${encodeURIComponent(
-                          author.username
-                        )}')">
+                        <div class="interaction-card bg-slate-800/50 border border-slate-700/50 p-4" onclick="openModal('${encodeURIComponent(author.username)}')">
                             <div class="flex items-start gap-3 mb-3">
-                                <div class="text-sm font-bold text-telegram w-6 flex-shrink-0">#${
-                                  index + 1
-                                }</div>
+                                <div class="text-sm font-bold text-blue-400 mono w-6 flex-shrink-0">#${index + 1}</div>
                                 <div class="flex-shrink-0">
-                                    ${
-                                      author.profileImageUrl
-                                        ? `<img src="${author.profileImageUrl}" alt="${author.name}" class="w-12 h-12 rounded-full border-2 border-gray-200">`
-                                        : `<div class="w-12 h-12 rounded-full bg-telegram-light border-2 border-gray-200 flex items-center justify-center">
-                                            <span class="text-telegram font-bold">${author.name
-                                              .charAt(0)
-                                              .toUpperCase()}</span>
+                                    ${author.profileImageUrl
+                                      ? `<img src="${author.profileImageUrl}" alt="${author.name}" class="w-12 h-12 rounded-full border border-slate-600">`
+                                      : `<div class="w-12 h-12 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center">
+                                            <span class="text-slate-400 font-bold serif">${author.name.charAt(0).toUpperCase()}</span>
                                         </div>`
                                     }
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
-                                        <h4 class="font-semibold text-gray-900 truncate">${
-                                          author.name
-                                        }</h4>
-                                        ${
-                                          author.isVerified
-                                            ? '<svg class="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>'
-                                            : ""
-                                        }
+                                        <h4 class="font-semibold text-slate-200 truncate serif">${author.name}</h4>
+                                        ${author.isVerified ? '<span class="text-blue-400 text-xs">✓</span>' : ""}
                                     </div>
-                                    <p class="text-telegram text-sm truncate">@${
-                                      author.username
-                                    }</p>
+                                    <p class="text-blue-400 text-sm mono truncate">@${author.username}</p>
                                 </div>
                             </div>
-                            
-                            ${
-                              author.bio
-                                ? `<p class="text-xs text-gray-600 mb-3 bio-text">${author.bio}</p>`
-                                : '<div class="mb-3"></div>'
-                            }
-                            
+
+                            ${author.bio ? `<p class="text-xs text-slate-500 mb-3 bio-text serif">${author.bio}</p>` : '<div class="mb-3"></div>'}
+
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <div class="text-lg font-bold text-gray-900">${author.postCount.toLocaleString()}</div>
-                                    <div class="text-xs text-gray-500">conversations</div>
+                                    <div class="text-lg font-bold text-slate-200 serif">${author.postCount.toLocaleString()}</div>
+                                    <div class="text-xs text-slate-600 mono">conversations</div>
                                 </div>
                                 <div class="text-right">
-                                    <div class="text-xs text-gray-500">
-                                        ${new Date(
-                                          author.latestPostDate
-                                        ).toLocaleDateString("en-US", {
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
+                                    <div class="text-xs text-slate-500 mono">
+                                        ${new Date(author.latestPostDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                     </div>
-                                    <div class="text-xs text-gray-400">latest</div>
+                                    <div class="text-xs text-slate-600">latest</div>
                                 </div>
                             </div>
-                            
-                            ${
-                              author.location
-                                ? `<div class="mt-2 pt-2 border-t border-gray-200">
-                                    <p class="text-xs text-gray-500 truncate flex items-center gap-1">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        </svg>
-                                        ${author.location}
-                                    </p>
-                                </div>`
-                                : ""
-                            }
+
+                            ${author.location ? `
+                            <div class="mt-2 pt-2 border-t border-slate-700/50">
+                                <p class="text-xs text-slate-600 truncate mono">📍 ${author.location}</p>
+                            </div>` : ""}
                         </div>
-                    `
+                    `,
                       )
                       .join("")}
                 </div>
-                
-                ${
-                  stats.length === 0
-                    ? `
+
+                ${stats.length === 0 ? `
                     <div class="text-center py-12">
-                        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <span class="text-2xl">📊</span>
+                        <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-700">
+                            <span class="text-2xl">◇</span>
                         </div>
-                        <h3 class="text-lg font-semibold text-gray-900 mb-2">No conversation data yet</h3>
-                        <p class="text-gray-600">Your analytics will appear here once we process your posts.</p>
+                        <h3 class="text-lg font-semibold text-slate-300 serif mb-2">No conversation data yet</h3>
+                        <p class="text-slate-500">Your analytics will appear here once we process your posts.</p>
                     </div>
-                `
-                    : ""
-                }
+                ` : ""}
             </div>
+
+            <!-- Footer -->
+            <footer class="text-center py-8 mt-12">
+                <div class="text-sm text-slate-600 serif italic">
+                    γνῶθι σεαυτόν — Know Thyself
+                </div>
+            </footer>
         </div>
     </main>
 
     <!-- Modal -->
     <div id="modal" class="modal-overlay">
         <div class="modal-content">
-            <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center">
-                        <span class="text-white font-bold">💬</span>
-                    </div>
-                    <div>
-                        <h3 class="text-lg font-semibold text-gray-900">Conversations with <span id="modal-username"></span></h3>
-                        <p class="text-sm text-gray-500">All your interactions</p>
-                    </div>
+            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-200 serif">Conversations with <span id="modal-username" class="text-blue-400"></span></h3>
+                    <p class="text-sm text-slate-500 mono">All your interactions</p>
                 </div>
-                <button class="p-2 hover:bg-gray-100 rounded-full transition-colors" onclick="closeModal()">
-                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
+                <button class="p-2 hover:bg-slate-700 transition-colors text-slate-400" onclick="closeModal()">✕</button>
             </div>
-            
+
             <div class="p-6 flex-1 overflow-hidden">
                 <textarea id="modal-text" class="modal-text w-full" readonly></textarea>
             </div>
-            
-            <div class="flex items-center justify-between p-6 border-t border-gray-200">
-                <div class="text-sm text-gray-600">
+
+            <div class="flex items-center justify-between p-6 border-t border-slate-700/50">
+                <div class="text-sm text-slate-500 mono">
                     <span id="loading-indicator" style="display: none;">
-                        <span class="loading-spinner"></span>Loading conversations...
+                        <span class="loading-spinner"></span>Loading...
                     </span>
                     <span id="content-info" style="display: none;"></span>
                 </div>
-                <button class="bg-telegram hover:bg-telegram-dark text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center gap-2" onclick="copyToClipboard()">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                    </svg>
+                <button class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 mono text-sm transition-colors border border-slate-600" onclick="copyToClipboard()">
                     Copy
                 </button>
             </div>
@@ -2765,41 +2688,36 @@ const statsPage = (
             const modalText = document.getElementById('modal-text');
             const loadingIndicator = document.getElementById('loading-indicator');
             const contentInfo = document.getElementById('content-info');
-            
+
             modalUsername.textContent = '@' + decodeURIComponent(username);
             modalText.value = '';
             currentContent = '';
-            
+
             modal.style.display = 'flex';
             loadingIndicator.style.display = 'inline';
             contentInfo.style.display = 'none';
-            
+
             const query = 'from:' + decodeURIComponent(username);
             const url = '/search?' + new URLSearchParams({
                 q: query,
                 username: '${username}',
                 maxTokens: '50000'
             });
-            
+
             fetch(url)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch conversations');
-                    }
+                    if (!response.ok) throw new Error('Failed to fetch conversations');
                     return response.text();
                 })
                 .then(content => {
                     currentContent = content;
                     modalText.value = content;
-                    
                     loadingIndicator.style.display = 'none';
                     contentInfo.style.display = 'inline';
-                    
                     const tokens = Math.round(content.length/5);
-                    contentInfo.textContent = \`\${tokens.toLocaleString()} tokens\`;
+                    contentInfo.textContent = tokens.toLocaleString() + ' tokens';
                 })
                 .catch(error => {
-                    console.error('Error fetching conversations:', error);
                     modalText.value = 'Error loading conversations: ' + error.message;
                     loadingIndicator.style.display = 'none';
                     contentInfo.style.display = 'inline';
@@ -2815,27 +2733,19 @@ const statsPage = (
             if (currentContent) {
                 navigator.clipboard.writeText(currentContent).then(() => {
                     const button = event.target.closest('button');
-                    const originalHTML = button.innerHTML;
-                    button.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Copied!';
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                    }, 2000);
+                    const original = button.textContent;
+                    button.textContent = 'Copied!';
+                    setTimeout(() => { button.textContent = original; }, 2000);
                 });
             }
         }
 
-        // Close modal when clicking outside
         document.getElementById('modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeModal();
-            }
+            if (e.target === this) closeModal();
         });
 
-        // Close modal with Escape key
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeModal();
-            }
+            if (e.key === 'Escape') closeModal();
         });
     </script>
 </body>
@@ -2843,55 +2753,72 @@ const statsPage = (
 
 const dashboardPage = (
   user: UserContext["user"],
-  stats: UserStats
+  stats: UserStats,
 ) => `<!DOCTYPE html>
-<html lang="en" class="bg-white">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - CloneChat</title>
+    <title>Dashboard - grokthyself</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        telegram: '#0088cc',
-                        'telegram-dark': '#006ba6',
-                        'telegram-light': '#e1f5ff',
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
-        body {
-            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        .serif { font-family: 'Cormorant Garamond', serif; }
+        .mono { font-family: 'Space Mono', monospace; }
+
+        @keyframes subtle-pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
         }
 
-        .gradient-bg {
-            background: linear-gradient(135deg, #0088cc 0%, #006ba6 100%);
+        @keyframes grid-move {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
         }
 
-        .glass {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 136, 204, 0.1);
+        .cyber-grid {
+            background-image:
+                linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 30s linear infinite;
         }
+
+        .border-glow {
+            box-shadow: 0 0 15px rgba(148, 163, 184, 0.2), inset 0 0 10px rgba(148, 163, 184, 0.1);
+        }
+
+        .pillar-cap {
+            border-top: 3px solid rgba(148, 163, 184, 0.3);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            height: 4px;
+            margin-bottom: 8px;
+        }
+
+        .scroll-ornament {
+            background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.2) 50%, transparent 100%);
+            height: 1px;
+            position: relative;
+        }
+
+        .scroll-ornament::before, .scroll-ornament::after {
+            content: '◆';
+            position: absolute;
+            color: rgba(148, 163, 184, 0.4);
+            font-size: 12px;
+            top: -6px;
+        }
+
+        .scroll-ornament::before { left: 0; }
+        .scroll-ornament::after { right: 0; }
 
         .status-pulse {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
+            animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         .progress-bar {
-            background: linear-gradient(90deg, #0088cc, #006ba6, #0088cc);
+            background: linear-gradient(90deg, #60a5fa, #3b82f6, #60a5fa);
             background-size: 200% 100%;
             animation: shimmer 2s ease-in-out infinite;
         }
@@ -2902,374 +2829,240 @@ const dashboardPage = (
         }
 
         .progress-container {
-            background: rgba(0, 136, 204, 0.1);
+            background: rgba(96, 165, 250, 0.2);
             border-radius: 9999px;
             overflow: hidden;
-            position: relative;
-        }
-
-        .progress-container::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-            transform: translateX(-100%);
-            animation: progress-shine 2s ease-in-out infinite;
-        }
-
-        @keyframes progress-shine {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        .premium-glow {
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
-            border: 2px solid #f59e0b;
         }
     </style>
 </head>
-<body class="bg-gray-50">
-    <main class="min-h-screen px-4 py-6">
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
+    <!-- Cyber Grid Background -->
+    <div class="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
+
+    <main class="relative z-10 min-h-screen px-4 py-8">
         <div class="max-w-4xl mx-auto">
             <!-- Header -->
-            <header class="flex items-center justify-between mb-8">
+            <header class="flex items-center justify-between mb-10">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 gradient-bg rounded-2xl flex items-center justify-center">
-                        <span class="text-white font-bold text-xl">💬</span>
-                    </div>
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900">CloneChat</h1>
-                        <p class="text-gray-600">Your AI clone dashboard</p>
-                    </div>
+                    <a href="/" class="text-3xl font-bold serif text-slate-200">grokthyself</a>
                 </div>
-
-                <div class="flex items-center gap-4">
-                    <a href="/stats?username=${
-                      user.username
-                    }" class="text-blue-600 hover:text-blue-700 font-medium">
-                        Stats
-                    </a>
-                    <a href="/logout" class="text-red-600 hover:text-red-700 font-medium">Logout</a>
+                <div class="flex items-center gap-6 mono text-sm">
+                    ${stats?.isPremium ? `<a href="/stats?username=${user?.username}" class="text-slate-400 hover:text-slate-200 transition-colors">Stats</a>` : ""}
+                    <a href="/logout" class="text-slate-500 hover:text-slate-300 transition-colors">Logout</a>
                 </div>
             </header>
 
-            <!-- Profile & Status Card -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm mb-6">
-                <div class="flex items-start gap-4">
+            <!-- Ornamental Divider -->
+            <div class="flex items-center justify-center gap-4 mb-10">
+                <div class="scroll-ornament w-24"></div>
+                <span class="text-slate-600 text-lg">◆</span>
+                <div class="scroll-ornament w-24"></div>
+            </div>
+
+            <!-- Profile Card -->
+            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
+                <div class="pillar-cap"></div>
+                <div class="flex items-start gap-6">
                     ${
-                      user.profile_image_url
-                        ? `<img src="${user.profile_image_url}" alt="Profile" class="w-16 h-16 rounded-full border-2 border-gray-200 flex-shrink-0">`
-                        : `<div class="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                            <span class="text-gray-500 text-xl font-bold">${user.name
-                              .charAt(0)
-                              .toUpperCase()}</span>
+                      user?.profile_image_url
+                        ? `<img src="${user.profile_image_url}" alt="Profile" class="w-20 h-20 rounded-full border-2 border-slate-600 flex-shrink-0">`
+                        : `<div class="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center flex-shrink-0">
+                            <span class="text-slate-400 text-2xl font-bold serif">${user?.name?.charAt(0)?.toUpperCase() || "?"}</span>
                         </div>`
                     }
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-3 mb-2">
-                            <h2 class="text-xl font-bold text-gray-900">${
-                              user.name
-                            }</h2>
-                            ${
-                              stats.isPremium
-                                ? '<span class="bg-telegram text-white px-3 py-1 rounded-full text-sm font-medium">Premium</span>'
-                                : ""
-                            }
+                            <h2 class="text-2xl font-bold serif text-slate-200">${user?.name || "User"}</h2>
+                            ${stats?.isPremium ? '<span class="bg-blue-500/20 text-blue-400 px-3 py-1 text-sm mono border border-blue-500/30">PREMIUM</span>' : ""}
                         </div>
-                        <p class="text-gray-600 mb-3">@${user.username}</p>
-                        
-                        <div class="grid grid-cols-3 gap-4">
+                        <p class="text-slate-500 mono mb-4">@${user?.username || "unknown"}</p>
+
+                        ${stats?.isPremium ? `
+                        <div class="grid grid-cols-3 gap-6 mt-6">
                             <div class="text-center">
-                                <div class="text-2xl font-bold text-gray-900">${stats.postCount.toLocaleString()}</div>
-                                <div class="text-sm text-gray-500">Posts Analyzed</div>
+                                <div class="text-3xl font-bold serif text-slate-200">${stats.postCount?.toLocaleString() || 0}</div>
+                                <div class="text-xs text-slate-500 mono tracking-wider">POSTS</div>
                             </div>
                             <div class="text-center">
-                                <div class="text-2xl font-bold ${
-                                  stats.scrapeStatus === "in_progress"
-                                    ? "status-pulse text-telegram"
-                                    : "text-gray-900"
-                                }">
-                                    ${
-                                      stats.historyIsCompleted &&
-                                      stats.syncedFrom
-                                        ? "✅"
-                                        : stats.scrapeStatus === "in_progress"
-                                        ? "⟳"
-                                        : stats.scrapeStatus === "failed"
-                                        ? "❌"
-                                        : "⏳"
-                                    }
+                                <div class="text-3xl font-bold serif ${stats.scrapeStatus === "in_progress" ? "status-pulse text-blue-400" : "text-slate-200"}">
+                                    ${stats.historyIsCompleted && stats.syncedFrom ? "✓" : stats.scrapeStatus === "in_progress" ? "⟳" : stats.scrapeStatus === "failed" ? "✗" : "○"}
                                 </div>
-                                <div class="text-sm text-gray-500">Clone Status</div>
+                                <div class="text-xs text-slate-500 mono tracking-wider">STATUS</div>
                             </div>
                             <div class="text-center">
-                                <div class="text-2xl font-bold text-gray-900">${
-                                  stats.historyCount >= stats.historyMaxCount &&
-                                  !stats.isPremium
-                                    ? "100%"
-                                    : Math.round(
-                                        (stats.historyCount /
-                                          stats.historyMaxCount) *
-                                          100
-                                      ) + "%"
-                                }</div>
-                                <div class="text-sm text-gray-500">Completion</div>
+                                <div class="text-3xl font-bold serif text-slate-200">${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%</div>
+                                <div class="text-xs text-slate-500 mono tracking-wider">COMPLETE</div>
                             </div>
                         </div>
+                        ` : ""}
                     </div>
                 </div>
-                
-                ${
-                  stats.scrapeStatus === "in_progress"
-                    ? `
-                <!-- Progress Bar -->
-                <div class="mt-4 mb-4">
+
+                ${stats?.isPremium && stats.scrapeStatus === "in_progress" ? `
+                <div class="mt-8">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-telegram">Creating your AI clone...</span>
-                        <span class="text-sm text-gray-500">${Math.round(
-                          (stats.historyCount / stats.historyMaxCount) * 100
-                        )}%</span>
+                        <span class="text-sm text-blue-400 mono">Analyzing your posts...</span>
+                        <span class="text-sm text-slate-500 mono">${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%</span>
                     </div>
-                    <div class="progress-container h-2 relative">
-                        <div class="progress-bar h-full" style="width: ${Math.round(
-                          (stats.historyCount / stats.historyMaxCount) * 100
-                        )}%"></div>
+                    <div class="progress-container h-1">
+                        <div class="progress-bar h-full" style="width: ${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%"></div>
                     </div>
-                    <div class="text-xs text-gray-500 mt-1">
-                        ${stats.historyCount.toLocaleString()} / ${stats.historyMaxCount.toLocaleString()} posts processed
+                    <div class="text-xs text-slate-600 mt-2 mono">
+                        ${stats.historyCount?.toLocaleString() || 0} / ${stats.historyMaxCount?.toLocaleString() || 0} posts processed
                     </div>
                 </div>
-                `
-                    : ""
-                }
-                
-                <div class="mt-4 p-4 bg-gray-50 rounded-xl">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-6 h-6 ${
-                          stats.historyIsCompleted && stats.syncedFrom
-                            ? "bg-green-500"
-                            : stats.scrapeStatus === "in_progress"
-                            ? "bg-telegram"
-                            : "bg-gray-400"
-                        } rounded-full flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
+                ` : ""}
+
+                ${stats?.isPremium ? `
+                <div class="mt-6 p-4 bg-slate-800/50 border border-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 ${stats.historyIsCompleted && stats.syncedFrom ? "bg-green-500/20 border-green-500/50" : stats.scrapeStatus === "in_progress" ? "bg-blue-500/20 border-blue-500/50" : "bg-slate-700"} border rounded-full flex items-center justify-center">
+                            <span class="text-xs">${stats.historyIsCompleted && stats.syncedFrom ? "✓" : stats.scrapeStatus === "in_progress" ? "◎" : "○"}</span>
                         </div>
-                        <span class="font-medium text-gray-900">
-                            ${
-                              stats.syncedFrom && stats.historyIsCompleted
-                                ? "Your AI clone is ready!"
-                                : stats.scrapeStatus === "in_progress"
-                                ? "Creating your AI clone..."
-                                : stats.scrapeStatus === "failed"
-                                ? "Clone creation failed"
-                                : "Clone can be previewed"
-                            }
-                        </span>
+                        <div>
+                            <span class="text-slate-200 serif">
+                                ${stats.syncedFrom && stats.historyIsCompleted ? "Your neural context is ready" : stats.scrapeStatus === "in_progress" ? "Building your neural context..." : stats.scrapeStatus === "failed" ? "Context creation failed" : "Awaiting initialization"}
+                            </span>
+                            <p class="text-sm text-slate-500 mt-1">
+                                ${stats.syncedFrom && stats.historyIsCompleted ? "Your clone is live and ready for conversations" : stats.scrapeStatus === "in_progress" ? "We're analyzing your posts to create an accurate AI representation." : stats.scrapeStatus === "failed" ? "Something went wrong. Please refresh the page to retry." : "Your premium clone will be created shortly."}
+                            </p>
+                        </div>
                     </div>
-                    <p class="text-sm text-gray-600">
-                        ${
-                          stats.syncedFrom && stats.historyIsCompleted
-                            ? "Your clone is live and ready for conversations"
-                            : stats.scrapeStatus === "in_progress"
-                            ? "We're analyzing your posts to create an accurate AI representation. This may take a few minutes."
-                            : stats.scrapeStatus === "failed"
-                            ? "Something went wrong. Please refresh the page to retry."
-                            : stats.isPremium
-                            ? "Ready to create your premium clone with full post history."
-                            : "Get the premium version to unlock your full AI clone potential."
-                        }
-                    </p>
                 </div>
+                ` : ""}
             </div>
 
+            ${!stats?.isPremium ? `
+            <!-- Purchase Card -->
+            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8 border-glow">
+                <div class="pillar-cap"></div>
+                <div class="mono text-xs text-slate-500 tracking-widest mb-2">UNLOCK YOUR POTENTIAL</div>
+                <h3 class="text-3xl font-bold serif text-slate-200 mb-6">Create Your Neural Context</h3>
+
+                <p class="text-slate-400 serif text-lg mb-6">
+                    Transform your 𝕏 presence into <span class="text-blue-400">portable knowledge</span> that AI agents can discover and use.
+                </p>
+
+                <div class="space-y-3 mb-8">
+                    <div class="flex items-center gap-3 text-slate-300">
+                        <span class="text-blue-400">◆</span>
+                        <span class="serif">Up to 100,000 historic posts analyzed</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-300">
+                        <span class="text-blue-400">◆</span>
+                        <span class="serif">Powered by advanced Grok AI</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-300">
+                        <span class="text-blue-400">◆</span>
+                        <span class="serif">Real-time post synchronization</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-300">
+                        <span class="text-blue-400">◆</span>
+                        <span class="serif">Custom shareable link for your bio</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-300">
+                        <span class="text-blue-400">◆</span>
+                        <span class="serif">Lifetime access - no subscriptions</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="text-4xl font-bold serif text-slate-200">$29</div>
+                    <div>
+                        <span class="line-through text-slate-600 text-lg">$129</span>
+                        <span class="bg-blue-500/20 text-blue-400 px-2 py-1 text-sm mono ml-2 border border-blue-500/30">77% OFF</span>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-500 mb-6 mono">Early adopter pricing - limited time</p>
+
+                <a href="${PAYMENT_LINK_URL}?client_reference_id=${user?.username}"
+                   class="inline-flex items-center gap-4 bg-slate-800 border border-slate-600 text-slate-200 px-8 py-4 text-lg font-semibold hover:bg-slate-700 hover:border-slate-400 transition-all duration-300 border-glow mono">
+                    <span>Begin Transformation</span>
+                    <span class="text-blue-400">→</span>
+                </a>
+            </div>
+            ` : ""}
+
+            ${stats?.isPremium ? `
             <!-- Clone Settings Card -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm mb-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-                        <span class="text-gray-600 font-bold">⚙️</span>
-                    </div>
-                    <h3 class="text-lg font-semibold text-gray-900">Clone Settings</h3>
-                </div>
-                
-                <div class="space-y-4">
-                    <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                        <input type="checkbox" id="public-check" ${
-                          stats.isPublic ? "checked" : ""
-                        }
-                            class="mt-1 w-5 h-5 text-telegram rounded focus:ring-telegram">
-                        <div class="flex-1">
-                            <span class="font-medium text-gray-900 block">Clone is public</span>
-                            <span class="text-sm text-gray-600">Deselecting it means only you will be able to chat</span>
-                        </div>
-                    </label>
-                </div>
-            </div>
+            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
+                <div class="pillar-cap"></div>
+                <div class="mono text-xs text-slate-500 tracking-widest mb-2">CONFIGURATION</div>
+                <h3 class="text-xl font-bold serif text-slate-200 mb-6">Clone Settings</h3>
 
-            ${
-              !stats.isPremium
-                ? `
-            <!-- Premium Upgrade Card -->
-            <div class="bg-gradient-to-br from-orange-50 to-amber-50 premium-glow rounded-2xl p-6 mb-6">
-                <div class="flex items-start gap-4">
-                    <div class="text-4xl">🚀</div>
+                <label class="flex items-start gap-4 cursor-pointer p-4 bg-slate-800/30 border border-slate-700/30 hover:border-slate-600 transition-colors">
+                    <input type="checkbox" id="public-check" ${stats.isPublic ? "checked" : ""}
+                        class="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500/50">
                     <div class="flex-1">
-                        <h3 class="text-xl font-bold text-orange-800 mb-2">Unlock Your Full AI Clone</h3>
-                        <p class="text-orange-700 mb-4">
-                            You're currently limited to basic functionality. Upgrade to Premium for:
-                        </p>
-                        <ul class="text-orange-700 mb-4 space-y-1">
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                                </svg>
-                                Up to 100,000 historic posts analyzed
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                                </svg>
-                                Powered by advanced Grok AI
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                                </svg>
-                                Real-time post updates
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                                </svg>
-                                Custom shareable link
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                                </svg>
-                                Lifetime access - no subscriptions!
-                            </li>
-                        </ul>
-                        <div class="flex items-center gap-4">
-                            <div class="text-3xl font-bold text-red-600">$29</div>
-                            <div>
-                                <span class="line-through text-gray-500 text-lg">$129</span>
-                                <span class="bg-red-500 text-white px-2 py-1 rounded text-sm font-semibold ml-2">77% OFF</span>
-                            </div>
-                        </div>
-                        <p class="text-sm text-orange-600 mb-4 font-semibold">⚡ Early Bird Special - Limited Time!</p>
-                        <a href="${PAYMENT_LINK_URL}?client_reference_id=${user.username}" 
-                           class="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-6 py-3 rounded-full font-semibold transition-all transform hover:scale-105 shadow-lg">
-                            <span>🔥</span>
-                            Get Premium Now - $29
-                        </a>
+                        <span class="text-slate-200 serif block">Clone is public</span>
+                        <span class="text-sm text-slate-500">When disabled, only you can interact with your clone</span>
                     </div>
-                </div>
+                </label>
             </div>
-            `
-                : ""
-            }
+            ` : ""}
 
-            ${
-              stats.syncedFrom
-                ? `
+            ${stats?.isPremium && stats.syncedFrom ? `
             <!-- Clone Link Card -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm mb-6">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                        <span class="text-green-600 font-bold">🔗</span>
+            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
+                <div class="pillar-cap"></div>
+                <div class="mono text-xs text-slate-500 tracking-widest mb-2">YOUR PORTAL</div>
+                <h3 class="text-xl font-bold serif text-slate-200 mb-6">
+                    ${stats.historyIsCompleted ? "Your Clone is Live" : "Clone Initializing..."}
+                </h3>
+
+                <div class="bg-slate-800/50 border border-slate-600 p-6 mb-6">
+                    <h4 class="text-slate-300 serif mb-3">Add to your 𝕏 bio:</h4>
+                    <div class="flex items-center gap-3 mb-4">
+                        <code class="flex-1 text-lg mono text-blue-400 bg-slate-900/50 px-4 py-2 border border-slate-700" id="bio-link">
+                            https://grokthyself.com/${user?.username}
+                        </code>
+                        <button onclick="copyBioLink()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 mono text-sm transition-colors border border-slate-600">
+                            Copy
+                        </button>
                     </div>
-                    <h3 class="text-lg font-semibold text-gray-900">${
-                      stats.isPremium && stats.historyIsCompleted
-                        ? "Your Clone is Live!"
-                        : "Preview your clone"
-                    }</h3>
+                    <p class="text-sm text-slate-500 text-center serif">Let your followers converse with your neural context 24/7</p>
                 </div>
-                
-                <!-- Big Prominent Bio Section -->
-                <div class="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-2xl p-6 mb-6">
-                    <h4 class="text-lg font-semibold text-green-800 mb-3 flex items-center gap-2">
-                        <span class="text-2xl">✨</span>
-                        Add to your X bio:
-                    </h4>
-                    <div class="bg-white rounded-xl p-4 mb-4 border-2 border-green-200">
-                        <div class="flex items-center gap-3 mb-3">
-                            <code class="flex-1 text-lg font-mono text-telegram font-semibold" id="bio-link">
-                                https://clonechat.me/${user.username}
-                            </code>
-                            <button onclick="copyBioLink()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                </svg>
-                                Copy
-                            </button>
-                            <a href="https://clonechat.me/${
-                              user.username
-                            }" target="_blank" class="bg-telegram hover:bg-telegram-dark text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                </svg>
-                                Visit
-                            </a>
-                        </div>
-                        <p class="text-sm text-gray-600 text-center">${
-                          !stats.isPremium
-                            ? "Buy premium to allow anyone to view this page!"
-                            : "Let your followers chat with your AI clone 24/7!"
-                        }</p>
-                    </div>
-                </div>
-                
+
                 <div class="text-center">
-                    <p class="text-sm text-gray-600 mb-3">Perfect for your X bio, website, or anywhere you want to be accessible 24/7</p>
-                    <a href="https://clonechat.me/${
-                      user.username
-                    }" target="_blank" class="inline-flex items-center gap-2 text-telegram hover:text-telegram-dark font-medium">
-                        <span>💬</span>
-                        Preview Your Clone
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                        </svg>
+                    <a href="https://grokthyself.com/${user?.username}" target="_blank"
+                       class="inline-flex items-center gap-3 text-blue-400 hover:text-blue-300 transition-colors mono">
+                        <span>Visit Your Clone</span>
+                        <span>→</span>
                     </a>
                 </div>
             </div>
-            `
-                : ""
-            }
+            ` : ""}
 
-
-
+            <!-- Footer -->
+            <footer class="text-center py-8 border-t border-slate-800/50 mt-12">
+                <div class="text-sm text-slate-600 serif italic">
+                    γνῶθι σεαυτόν — Know Thyself
+                </div>
+            </footer>
         </div>
     </main>
 
     <script>
         const publicCheck = document.getElementById('public-check');
-
-        function updateSettings() {
-            const params = new URLSearchParams();
-            params.set('public', publicCheck.checked);
-            window.location.href = '/dashboard?' + params.toString();
-        }
-
-        publicCheck.addEventListener('change', updateSettings);
-
-        function copyBioLink() {
-            const linkElement = document.getElementById('bio-link');
-            navigator.clipboard.writeText(linkElement.textContent.trim()).then(() => {
-                const button = event.target.closest('button');
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Copied!';
-                setTimeout(() => {
-                    button.innerHTML = originalHTML;
-                }, 2000);
+        if (publicCheck) {
+            publicCheck.addEventListener('change', function() {
+                const params = new URLSearchParams();
+                params.set('public', this.checked);
+                window.location.href = '/dashboard?' + params.toString();
             });
         }
 
-
+        function copyBioLink() {
+            const linkElement = document.getElementById('bio-link');
+            if (linkElement) {
+                navigator.clipboard.writeText(linkElement.textContent.trim()).then(() => {
+                    const button = event.target.closest('button');
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied!';
+                    setTimeout(() => { button.textContent = originalText; }, 2000);
+                });
+            }
+        }
     </script>
 </body>
 </html>`;
@@ -3278,10 +3071,13 @@ export default {
   fetch: withSimplerAuth(
     async (request: Request, env: Env, ctx: UserContext) => {
       // Ensure required environment variables are present
-      if (!env.X_API_KEY) {
-        return new Response("X_API_KEY environment variable is required", {
-          status: 500,
-        });
+      if (!env.TWITTERAPI_SECRET) {
+        return new Response(
+          "TWITTERAPI_SECRET environment variable is required",
+          {
+            status: 500,
+          },
+        );
       }
 
       const url = new URL(request.url);
@@ -3314,7 +3110,7 @@ export default {
         try {
           // Get user's Durable Object
           const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + username)
+            env.USER_DO.idFromName(DO_NAME_PREFIX + username),
           );
 
           return studioMiddleware(request, userDO.raw, {
@@ -3334,7 +3130,7 @@ export default {
         }
 
         const userDO = env.USER_DO.get(
-          env.USER_DO.idFromName(DO_NAME_PREFIX + username)
+          env.USER_DO.idFromName(DO_NAME_PREFIX + username),
         );
 
         const user = await userDO.ensureUserExists(username);
@@ -3352,7 +3148,7 @@ export default {
         try {
           // Get user's Durable Object
           const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + ctx.user.username)
+            env.USER_DO.idFromName(DO_NAME_PREFIX + ctx.user.username),
           );
 
           // Handle query parameters for public/featured updates
@@ -3386,6 +3182,9 @@ export default {
             await userDO.exec(updateQuery, ...updateParams);
           }
 
+          // Ensure user exists in the DO before getting stats
+          await userDO.ensureUserExists(ctx.user.username);
+
           // Get user stats (this will now include the updated values)
           const stats = await userDO.getUserStats();
           const dashboardHtml = dashboardPage(ctx.user, stats);
@@ -3413,7 +3212,7 @@ export default {
         try {
           // Get user's Durable Object
           const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + username)
+            env.USER_DO.idFromName(DO_NAME_PREFIX + username),
           );
 
           // Get author stats
@@ -3457,7 +3256,7 @@ export default {
           return new Response("Please provide ?username", { status: 400 });
         }
         const userDO = env.USER_DO.get(
-          env.USER_DO.idFromName(DO_NAME_PREFIX + username)
+          env.USER_DO.idFromName(DO_NAME_PREFIX + username),
         );
 
         const toolResponse = await handleSearchTool(
@@ -3468,7 +3267,7 @@ export default {
           },
           env,
           ctx,
-          userDO
+          userDO,
         );
         return new Response(toolResponse.content[0].text);
       }
@@ -3491,12 +3290,12 @@ export default {
         headers: { "Content-Type": "text/html;charset=utf8" },
       });
     },
-    { isLoginRequired: false, scope: "profile" }
+    { isLoginRequired: false, scope: "profile" },
   ),
 } satisfies ExportedHandler<Env>;
 
 const streamToBuffer = async (
-  readableStream: ReadableStream<Uint8Array>
+  readableStream: ReadableStream<Uint8Array>,
 ): Promise<Uint8Array> => {
   const chunks: Uint8Array[] = [];
   const reader = readableStream.getReader();

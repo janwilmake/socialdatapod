@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Analytics -->
+    <script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Use {{username}}'s SKILL - grokthyself</title>
+    <meta name="description"
+        content="Use {{username}}'s SKILL powered by their X posts. Give AI agents access to their voice, wisdom, and expertise." />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://grokthyself.com/{{username}}" />
+
+    <!-- Facebook Meta Tags -->
+    <meta property="og:url" content="https://grokthyself.com/{{username}}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Use {{username}}'s SKILL - grokthyself" />
+    <meta property="og:description"
+        content="Use {{username}}'s SKILL powered by their X posts. Give AI agents access to their voice, wisdom, and expertise." />
+    <meta property="og:image" content="https://quickog.com/screenshot/grokthyself.com/{{username}}" />
+
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="twitter:domain" content="grokthyself.com" />
+    <meta property="twitter:url" content="https://grokthyself.com/{{username}}" />
+    <meta name="twitter:title" content="Use {{username}}'s SKILL - grokthyself" />
+    <meta name="twitter:description"
+        content="Use {{username}}'s SKILL powered by their X posts. Give AI agents access to their voice, wisdom, and expertise." />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+        .serif {
+            font-family: 'Cormorant Garamond', serif;
+        }
+
+        .mono {
+            font-family: 'Space Mono', monospace;
+        }
+
+        .border-glow {
+            box-shadow: 0 0 15px rgba(148, 163, 184, 0.2), inset 0 0 10px rgba(148, 163, 184, 0.1);
+        }
+
+        .greek-ornament {
+            border-top: 2px solid rgba(148, 163, 184, 0.3);
+            border-bottom: 2px solid rgba(148, 163, 184, 0.3);
+            position: relative;
+        }
+
+        .greek-ornament::before {
+            content: '◆';
+            position: absolute;
+            left: 50%;
+            top: -12px;
+            transform: translateX(-50%);
+            color: rgba(148, 163, 184, 0.5);
+            font-size: 20px;
+        }
+
+        .ai-logo {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+            filter: drop-shadow(2px 2px 4px rgba(96, 165, 250, 0.2));
+            cursor: pointer;
+        }
+
+        .ai-logo:hover {
+            transform: scale(1.1) translateY(-2px);
+            filter: drop-shadow(4px 4px 8px rgba(96, 165, 250, 0.3));
+        }
+
+        .ai-logo.active {
+            border: 3px solid #60a5fa;
+            transform: scale(1.05);
+        }
+
+        .instructions-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(100, 116, 139, 0.3);
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.8);
+            color: #10b981;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
+    <main class="min-h-screen">
+        <!-- Header -->
+        <header class="py-6 px-6 lg:px-8 border-b border-slate-800/50">
+            <div class="max-w-4xl mx-auto flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <a href="/" class="text-2xl font-bold serif text-slate-200 hover:text-blue-400 transition-colors">grokthyself</a>
+                </div>
+                <a href="/" class="text-blue-400 hover:text-blue-300 font-medium flex items-center gap-2 mono text-sm">
+                    <span>Create your own</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <section class="py-12 px-6 lg:px-8">
+            <div class="max-w-4xl mx-auto">
+                <!-- Hero -->
+                <div class="text-center mb-12">
+                    <div class="w-20 h-20 bg-slate-800 border border-slate-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <span class="text-2xl font-bold text-slate-400 serif">{{username}}</span>
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl font-bold mb-4 serif text-slate-200">
+                        Use <span class="text-blue-400">@{{username}}</span>'s SKILL
+                    </h1>
+                    <p class="text-xl text-slate-400 mb-8 serif">
+                        A SKILL powered by {{username}}'s X posts. Give AI agents access to their voice, wisdom, and expertise.
+                    </p>
+
+                    <!-- Status indicator -->
+                    <div class="inline-flex items-center gap-2 bg-green-900/30 border border-green-700/50 text-green-300 px-4 py-2 font-medium mono text-sm">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        SKILL Available
+                    </div>
+                </div>
+
+                <!-- AI Tools -->
+                <div class="bg-slate-900/30 border border-slate-700/50 p-8">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold mb-4 serif text-slate-200">Connect to SKILL</h2>
+                        <p class="text-slate-400 serif">Choose your preferred AI tool to use @{{username}}'s SKILL</p>
+                    </div>
+
+                    <div class="flex flex-wrap justify-center gap-6 mb-8">
+                        <img src="https://www.google.com/s2/favicons?domain=chatgpt.com&sz=64" alt="ChatGPT"
+                            class="ai-logo bg-slate-800 p-2 active" data-provider="chatgpt">
+                        <img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=64" alt="Claude"
+                            class="ai-logo bg-slate-800 p-2" data-provider="claude">
+                        <img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" alt="Cursor"
+                            class="ai-logo bg-slate-800 p-2" data-provider="cursor">
+                        <img src="https://www.google.com/s2/favicons?domain=code.visualstudio.com&sz=64" alt="VS Code"
+                            class="ai-logo bg-slate-800 p-2" data-provider="vscode">
+                        <img src="https://www.google.com/s2/favicons?domain=codeium.com&sz=64" alt="Windsurf"
+                            class="ai-logo bg-slate-800 p-2" data-provider="windsurf">
+                        <img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini"
+                            class="ai-logo bg-slate-800 p-2" data-provider="gemini">
+                    </div>
+
+                    <!-- ChatGPT Instructions (shown by default) -->
+                    <div id="chatgpt-instructions" class="instructions-card">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=chatgpt.com&sz=32" alt="ChatGPT"
+                                class="w-8 h-8 bg-slate-800 p-1 rounded">
+                            ChatGPT Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <div class="bg-blue-900/20 border border-blue-700/50 p-4">
+                                <p class="text-blue-300 font-medium mb-2 serif">Quick Setup:</p>
+                                <ol class="text-blue-200/80 space-y-2 text-sm list-decimal list-inside serif">
+                                    <li>Go to ChatGPT Settings → Connectors → Advanced Settings</li>
+                                    <li>Turn on 'Developer Mode'</li>
+                                    <li>Click 'Create' in connector settings</li>
+                                    <li>Fill in the details below</li>
+                                </ol>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-400 mb-1 mono">Name:</label>
+                                    <div class="bg-slate-800 p-3 text-slate-200 mono text-sm">{{username}}'s SKILL</div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-400 mb-1 mono">URL:</label>
+                                    <div class="bg-slate-800 p-3 text-slate-200 mono text-sm break-all">
+                                        https://grokthyself.com/mcp?username={{username}}</div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-400 mb-1 mono">Authentication:</label>
+                                    <div class="bg-slate-800 p-3 text-slate-200 mono text-sm">OAuth</div>
+                                </div>
+                            </div>
+
+                            <a href="https://chatgpt.com" target="_blank"
+                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                                Open ChatGPT
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Claude Instructions (hidden by default) -->
+                    <div id="claude-instructions" class="instructions-card hidden">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=32" alt="Claude"
+                                class="w-8 h-8 rounded">
+                            Claude Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <div class="bg-blue-900/20 border border-blue-700/50 p-4">
+                                <p class="text-blue-300 font-medium mb-2 serif">Quick Setup:</p>
+                                <ol class="text-blue-200/80 space-y-2 text-sm list-decimal list-inside serif">
+                                    <li>Go to Settings → Connectors</li>
+                                    <li>Click "Add Custom Connector"</li>
+                                    <li>Fill in the details below</li>
+                                </ol>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-400 mb-1 mono">Name:</label>
+                                    <div class="bg-slate-800 p-3 text-slate-200 mono text-sm">{{username}}'s SKILL</div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-400 mb-1 mono">URL:</label>
+                                    <div class="bg-slate-800 p-3 text-slate-200 mono text-sm break-all">
+                                        https://grokthyself.com/mcp?username={{username}}</div>
+                                </div>
+                            </div>
+
+                            <a href="https://claude.ai" target="_blank"
+                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                                Open Claude
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Cursor Instructions -->
+                    <div id="cursor-instructions" class="instructions-card hidden">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=32" alt="Cursor"
+                                class="w-8 h-8 rounded">
+                            Cursor Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <p class="text-slate-400 serif">Add to <code class="text-blue-400">~/.cursor/mcp.json</code> or
+                                <code class="text-blue-400">.cursor/mcp.json</code> (project-specific)
+                            </p>
+                            <div class="code-block">
+{
+  "mcpServers": {
+    "{{username}}'s SKILL": {
+      "url": "https://grokthyself.com/mcp?username={{username}}"
+    }
+  }
+}
+                            </div>
+                            <div class="flex gap-3">
+                                <a href="https://cursor.com/en/install-mcp?name={{username}}'s%20SKILL&config=%7B%22url%22%3A%22https%3A//grokthyself.com/mcp%3Fusername%3D{{username}}%22%7D"
+                                    class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm"
+                                    target="_blank">
+                                    Install via deep link
+                                </a>
+                                <button onclick="copyToClipboard('cursor-config')"
+                                    class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-6 py-3 font-medium transition-colors mono text-sm">
+                                    Copy Config
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VS Code Instructions -->
+                    <div id="vscode-instructions" class="instructions-card hidden">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=code.visualstudio.com&sz=32"
+                                alt="VS Code" class="w-8 h-8 rounded">
+                            VS Code Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <p class="text-slate-400 serif">Add to VS Code settings.json</p>
+                            <div class="code-block">
+{
+  "mcp": {
+    "servers": {
+      "{{username}}'s SKILL": {
+        "type": "http",
+        "url": "https://grokthyself.com/mcp?username={{username}}"
+      }
+    }
+  }
+}
+                            </div>
+                            <div class="flex gap-3">
+                                <a href="https://insiders.vscode.dev/redirect/mcp/install?name={{username}}'s%20SKILL&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A//grokthyself.com/mcp%3Fusername%3D{{username}}%22%7D"
+                                    class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm"
+                                    target="_blank">
+                                    Install via deep link
+                                </a>
+                                <button onclick="copyToClipboard('vscode-config')"
+                                    class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-6 py-3 font-medium transition-colors mono text-sm">
+                                    Copy Config
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Windsurf Instructions -->
+                    <div id="windsurf-instructions" class="instructions-card hidden">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=codeium.com&sz=32" alt="Windsurf"
+                                class="w-8 h-8 rounded">
+                            Windsurf Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <p class="text-slate-400 serif">Add to your Windsurf MCP configuration</p>
+                            <div class="code-block">
+{
+  "mcpServers": {
+    "{{username}}'s SKILL": {
+      "serverUrl": "https://grokthyself.com/mcp?username={{username}}"
+    }
+  }
+}
+                            </div>
+                            <button onclick="copyToClipboard('windsurf-config')"
+                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm">
+                                Copy Config
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Gemini Instructions -->
+                    <div id="gemini-instructions" class="instructions-card hidden">
+                        <h3 class="text-xl font-bold text-blue-400 mb-4 flex items-center gap-3 serif">
+                            <img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=32" alt="Gemini"
+                                class="w-8 h-8 rounded">
+                            Gemini Setup
+                        </h3>
+                        <div class="space-y-4">
+                            <p class="text-slate-400 serif">Add to <code class="text-blue-400">~/.gemini/settings.json</code></p>
+                            <div class="code-block">
+{
+  "mcpServers": {
+    "{{username}}'s SKILL": {
+      "httpUrl": "https://grokthyself.com/mcp?username={{username}}"
+    }
+  }
+}
+                            </div>
+                            <button onclick="copyToClipboard('gemini-config')"
+                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 font-medium transition-colors mono text-sm">
+                                Copy Config
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- What This SKILL Contains -->
+                <div class="bg-slate-900/30 border border-slate-700/50 p-8 mt-8">
+                    <h2 class="text-2xl font-bold mb-6 text-center serif text-slate-200">What @{{username}}'s SKILL Contains</h2>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-blue-900/30 border border-blue-700/50 flex items-center justify-center flex-shrink-0">
+                                    <span class="text-blue-400 text-sm">◆</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold mb-1 text-slate-200 serif">Voice & Style</h4>
+                                    <p class="text-slate-400 text-sm serif">Their unique communication patterns and writing style</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-blue-900/30 border border-blue-700/50 flex items-center justify-center flex-shrink-0">
+                                    <span class="text-blue-400 text-sm">◆</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold mb-1 text-slate-200 serif">Knowledge & Expertise</h4>
+                                    <p class="text-slate-400 text-sm serif">Domain knowledge extracted from their posts</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-blue-900/30 border border-blue-700/50 flex items-center justify-center flex-shrink-0">
+                                    <span class="text-blue-400 text-sm">◆</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold mb-1 text-slate-200 serif">Thoughts & Opinions</h4>
+                                    <p class="text-slate-400 text-sm serif">Their perspectives on various topics</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-blue-900/30 border border-blue-700/50 flex items-center justify-center flex-shrink-0">
+                                    <span class="text-blue-400 text-sm">◆</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold mb-1 text-slate-200 serif">Context & Sources</h4>
+                                    <p class="text-slate-400 text-sm serif">Links back to original posts as evidence</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="py-8 px-6 lg:px-8 border-t border-slate-800/50 text-center">
+            <div class="max-w-4xl mx-auto">
+                <p class="text-slate-500 mb-4 serif">Powered by grokthyself - Export your X posts into a SKILL</p>
+                <a href="/" class="text-blue-400 hover:text-blue-300 font-medium mono text-sm">
+                    Create your own SKILL →
+                </a>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        // Handle provider selection
+        const providers = document.querySelectorAll('.ai-logo[data-provider]');
+        const instructionCards = document.querySelectorAll('[id$="-instructions"]');
+
+        providers.forEach(provider => {
+            provider.addEventListener('click', () => {
+                const providerName = provider.getAttribute('data-provider');
+                const targetCard = document.getElementById(providerName + '-instructions');
+
+                // Remove active state from all providers
+                providers.forEach(p => {
+                    p.classList.remove('active');
+                });
+
+                // Add active state to selected provider
+                provider.classList.add('active');
+
+                // Hide all instruction cards
+                instructionCards.forEach(card => {
+                    card.classList.add('hidden');
+                });
+
+                // Show the selected card
+                if (targetCard) {
+                    targetCard.classList.remove('hidden');
+                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+        });
+
+        // Copy to clipboard functionality
+        function copyToClipboard(configType) {
+            let text = '';
+            const username = '{{username}}';
+
+            switch (configType) {
+                case 'cursor-config':
+                    text = `{
+  "mcpServers": {
+    "${username}'s SKILL": {
+      "url": "https://grokthyself.com/mcp?username=${username}"
+    }
+  }
+}`;
+                    break;
+                case 'vscode-config':
+                    text = `{
+  "mcp": {
+    "servers": {
+      "${username}'s SKILL": {
+        "type": "http",
+        "url": "https://grokthyself.com/mcp?username=${username}"
+      }
+    }
+  }
+}`;
+                    break;
+                case 'windsurf-config':
+                    text = `{
+  "mcpServers": {
+    "${username}'s SKILL": {
+      "serverUrl": "https://grokthyself.com/mcp?username=${username}"
+    }
+  }
+}`;
+                    break;
+                case 'gemini-config':
+                    text = `{
+  "mcpServers": {
+    "${username}'s SKILL": {
+      "httpUrl": "https://grokthyself.com/mcp?username=${username}"
+    }
+  }
+}`;
+                    break;
+            }
+
+            navigator.clipboard.writeText(text).then(() => {
+                const button = event.target.closest('button');
+                const originalHTML = button.innerHTML;
+                button.innerHTML = 'Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+    </script>
+</body>
+
+</html>

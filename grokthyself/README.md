@@ -39,10 +39,6 @@ Then, make these improvements!
 
 After this it's definitely shareable!
 
-### PARALLEL
-
-Use self-hosted variant of https://entity-resolution-demo.parallel.ai
-
 ### OpenAI ChatGPT issues
 
 This seems to be due to the resource being null and we have ` if (!resource || authData.resource !== resource) {` in `x-oauth-provider` token endpoint. Let's test cursor + vscode too. Fix or wait for this [situation](https://github.com/openai/openai-apps-sdk-examples/issues/33) to improve
@@ -99,3 +95,21 @@ Talk to people and find a way to position it such that there's a quick wow-momen
 - X has a great context to be a **starting point for personal superintelligence**. Modeling people and giving them access to tools can give rise to a new paradigm of AI that actually understands and has the needed context to do more, with less instructions.
 
 - LinkTree is a very interesting company to be inspired by because they convinced people to put a link in their bio. What if I could convince a niche to do the same? [Analysing this here](linktree)
+
+## Distribution
+
+people that sell knowledge want a model
+
+content creztors (podcasts) want to have the source posts quotable so people can start following there as alternate feed of info
+
+scoble
+
+do marketing like this!!! https://x.com/alex_prompter/status/2017044857764688132
+
+Target audience: content creators that already make $10k/month with their content
+
+Strategy:
+
+1. identify who i follow who fits the niche of 'content creators earning more than $2k/m' with their content
+2. tag them tweeting 'I created a Theo AI' showing a video with the MCP
+3. find them in other places https://contextarea.com/rules-httpsrawg-1dppy2af07o0wa
