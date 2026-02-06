@@ -151,6 +151,18 @@
     <div class="fixed inset-0 bg-gradient-radial from-transparent via-transparent to-slate-950/50 pointer-events-none">
     </div>
 
+    <!-- User Header (shown when logged in) -->
+    <header id="user-header" class="hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/90 backdrop-blur-sm border-b border-slate-800/50">
+        <div class="container mx-auto px-6 py-3 flex items-center justify-between">
+            <span class="text-xl font-bold serif text-slate-200">grokthyself</span>
+            <a href="/dashboard" class="flex items-center gap-3 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 px-4 py-2 transition-colors">
+                <img id="user-avatar" src="" alt="Profile" class="w-8 h-8 rounded-full border border-slate-600">
+                <span id="user-name" class="text-slate-200 mono text-sm"></span>
+                <span class="text-blue-400 text-sm">→ Dashboard</span>
+            </a>
+        </div>
+    </header>
+
     <!-- Hero Section -->
     <section class="relative min-h-screen flex items-center justify-center overflow-hidden py-12">
         <!-- Floating Background Elements -->
@@ -768,6 +780,26 @@
         </div>
     </footer>
 
+    <script>
+        // Check if user is logged in
+        fetch('/me')
+            .then(res => res.ok ? res.json() : null)
+            .then(user => {
+                if (user && user.username) {
+                    const header = document.getElementById('user-header');
+                    const avatar = document.getElementById('user-avatar');
+                    const name = document.getElementById('user-name');
+
+                    avatar.src = user.profile_image_url || '';
+                    name.textContent = '@' + user.username;
+                    header.classList.remove('hidden');
+
+                    // Add padding to body for fixed header
+                    document.body.style.paddingTop = '60px';
+                }
+            })
+            .catch(() => {});
+    </script>
 </body>
 
 </html>

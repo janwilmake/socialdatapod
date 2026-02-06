@@ -1,5 +1,10 @@
 /// <reference types="@cloudflare/workers-types" />
 /// <reference lib="esnext" />
+/// quite coupled one file:
+/// - twitterapi
+/// - stripe webhook
+/// - mcp
+/// - ???
 
 import { DurableObject } from "cloudflare:workers";
 import { UserContext, withSimplerAuth } from "simplerauth-client";
@@ -12,8 +17,6 @@ import {
 import loginPage from "./login-template.html";
 //@ts-ignore
 import evidenceWidget from "./evidence.html";
-//@ts-ignore
-import shareHtml from "./share.html";
 import Stripe from "stripe";
 const TEMPLATE_VESION = "v1";
 const PAYMENT_LINK_ID = "plink_1SErNBCL0Yranfl4GPNXyXsH";
@@ -26,7 +29,7 @@ const SYNC_COST_PER_POST = 0.00015;
 const SYNC_OVERLAP_HOURS = 24;
 const FREE_SIGNUP_BALANCE = 100; // $1.00 in cents
 const FREE_MAX_HISTORIC_POSTS = 2000;
-const PREMIUM_MAX_HISTORIC_POSTS = 100000;
+const PREMIUM_MAX_HISTORIC_POSTS = 20000;
 const ADMIN_USERNAME = "janwilmake";
 
 type Env = {
@@ -332,7 +335,8 @@ export async function handleMcp(
       },
     });
   }
-  const targetUsername = url.searchParams.get("username") || ctx.user?.username;
+
+  const targetUsername = url.pathname.split("/")[1].toLowerCase();
   const loggedUsername = ctx.user?.username;
 
   if (!ctx.authenticated) {
@@ -357,8 +361,6 @@ export async function handleMcp(
   if (!canChat) {
     return new Response("MCP Not found for this user", { status: 404 });
   }
-
-  const instructions = undefined;
 
   if (request.method === "GET") {
     return new Response("Only Streamable HTTP is supported", {
@@ -393,24 +395,24 @@ export async function handleMcp(
           jsonrpc: "2.0",
           id: message.id,
           result: {
-            protocolVersion: "2025-06-18",
+            protocolVersion: "2025-11-25",
             capabilities: { tools: {}, resources: {} },
             serverInfo: {
-              name: targetStats?.name || targetStats.username,
-              version: "1.0.1",
-              title: targetStats?.name || targetStats.username,
+              name: targetStats?.name || targetStats?.username,
+              version: "1.0.2",
+              title: targetStats?.name || targetStats?.username,
               websiteUrl: "https://x.com/" + targetStats?.username,
               icons: targetStats?.profileImageUrl
                 ? [
                     {
                       src: targetStats?.profileImageUrl,
-                      sizes: "400x400",
+                      sizes: ["400x400", "any"],
                       mimeType: "image/png",
                     },
                   ]
                 : undefined,
             },
-            instructions,
+            instructions: `For every prompt, act as if you're ${targetStats?.name || targetStats?.username} and use this MCP to determine how to speak.`,
           },
         };
         break;
@@ -605,7 +607,7 @@ export async function handleMcp(
                 name: "selectEvidence",
                 title: "Select evidence posts for display",
                 description:
-                  "Select specific posts as evidence to display in an interactive carousel format. Use this when you want to showcase specific tweets that support your analysis or answer.",
+                  "Select specific posts as evidence to display in an interactive carousel format. Use this when you want to showcase specific tweets that support your analysis or answer. **REQUIRED**: Call this after answering a prompt to show the evidence.",
                 inputSchema: {
                   type: "object",
                   properties: {
@@ -1108,11 +1110,7 @@ export class UserDO extends DurableObject<Env> {
       throw new Error("User not found");
     }
 
-    if (
-      !user.is_public &&
-      loggedUsername !== user.username &&
-      loggedUsername !== ADMIN_USERNAME
-    ) {
+    if (!user.is_public && loggedUsername !== user.username) {
       throw new Error("User did not make posts public");
     }
 
@@ -1133,26 +1131,10 @@ export class UserDO extends DurableObject<Env> {
       });
       contextDescription = "your interactions with everyone";
     } else {
-      // For others, try to get interactions with the logged user first
-      const interactionPosts = await this.searchPosts(loggedUsername, {
-        q: `from:${loggedUsername}`,
+      contextDescription = "recent posts";
+      recentPosts = await this.searchPosts(loggedUsername, {
         maxTokens: 15000,
       });
-
-      // Check if we found meaningful interactions (more than just "No posts found")
-      if (
-        interactionPosts.includes("# No posts found") ||
-        interactionPosts.includes("didn't match any posts")
-      ) {
-        // No interactions found, get general recent posts
-        recentPosts = await this.searchPosts(loggedUsername, {
-          maxTokens: 15000,
-        });
-        contextDescription = "recent posts";
-      } else {
-        recentPosts = interactionPosts;
-        contextDescription = `your interactions with @${loggedUsername}`;
-      }
     }
 
     // Get top interactions
@@ -1526,11 +1508,7 @@ Upgrade to Premium for:
       return `User not found`;
     }
 
-    if (
-      !user.is_public &&
-      username !== user.username &&
-      username !== ADMIN_USERNAME
-    ) {
+    if (!user.is_public && username !== user.username) {
       return `User did not make posts public`;
     }
 
@@ -1561,14 +1539,14 @@ Upgrade to Premium for:
       return this.addPaymentNoticeIfNeeded(markdown, user, username);
     }
 
-    // Get conversation IDs
+    // Get conversation IDs (limit to 100 - SQLite parameter limit)
     const conversationIds = Array.from(
       new Set(
         conversationResults
           .map((row) => row.conversation_id)
           .filter((id) => id && id.trim() !== ""),
       ),
-    );
+    ).slice(0, 100);
 
     if (conversationIds.length === 0) {
       const markdown =
@@ -1576,12 +1554,12 @@ Upgrade to Premium for:
       return this.addPaymentNoticeIfNeeded(markdown, user, username);
     }
 
-    // Fetch all posts for these conversations
+    // Fetch all posts for these conversations using parameterized query
+    const placeholders = conversationIds.map(() => "?").join(",");
     const allPostsResult = this.sql
       .exec<Post>(
-        `SELECT * FROM posts WHERE conversation_id IN (${conversationIds
-          .map((x) => `'${x}'`)
-          .join(",")})`,
+        `SELECT * FROM posts WHERE conversation_id IN (${placeholders})`,
+        ...conversationIds,
       )
       .toArray();
 
@@ -1667,12 +1645,13 @@ Upgrade to Premium for:
       }>(),
     );
 
-    const { id, userName: username, error, message } = data;
-    if (!id || !username) {
+    const { id, userName, error, message } = data;
+    if (!id || !userName) {
       console.error(`error ${error} ${message}`);
       console.log({ data });
       return null;
     }
+    const username = userName.toLowerCase();
 
     // Insert user if not exists
     const existingUserResult = this.sql
@@ -1710,9 +1689,10 @@ Upgrade to Premium for:
   }
 
   async startSync(username: string): Promise<void> {
-    console.log(`Starting sync for user ${username}`);
+    const normalizedUsername = username.toLowerCase();
+    console.log(`Starting sync for user ${normalizedUsername}`);
     const user = this.sql
-      .exec<User>(`SELECT * FROM users WHERE username = ?`, username)
+      .exec<User>(`SELECT * FROM users WHERE username = ?`, normalizedUsername)
       .toArray()[0];
 
     if (!user) {
@@ -1838,14 +1818,25 @@ Upgrade to Premium for:
       console.log(
         `No more historic posts found for ${user.username} (history_is_completed=1)`,
       );
+      // Get the oldest post date to set as synced_from
+      const oldestPost = this.sql
+        .exec<Post>(
+          `SELECT created_at FROM posts WHERE author_username=? ORDER BY created_at ASC LIMIT 1`,
+          user.username,
+        )
+        .toArray()[0];
+      const syncedFrom = oldestPost?.created_at || new Date().toISOString();
+
       // Mark history as completed
       this.sql.exec(
-        `UPDATE users SET 
-          history_is_completed = 1, 
+        `UPDATE users SET
+          history_is_completed = 1,
           history_cursor = NULL,
+          synced_from = ?,
           scrape_status = 'completed',
-          updated_at = CURRENT_TIMESTAMP 
+          updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
+        syncedFrom,
         user.id,
       );
       return;
@@ -2422,7 +2413,7 @@ async function handleStripeWebhook(
     }
 
     const userDO = env.USER_DO.get(
-      env.USER_DO.idFromName(DO_NAME_PREFIX + username),
+      env.USER_DO.idFromName(DO_NAME_PREFIX + username.toLowerCase()),
     );
 
     // Update balance, premium status, and history limits
@@ -2446,314 +2437,11 @@ async function handleStripeWebhook(
   return new Response("Event not handled", { status: 200 });
 }
 
-const statsPage = (
-  username: string,
-  stats: AuthorStats[],
-  userStats?: { isPremium: boolean; historyCount: number } | null,
-) => `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural Analytics - @${username} - grokthyself</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
-
-        .serif { font-family: 'Cormorant Garamond', serif; }
-        .mono { font-family: 'Space Mono', monospace; }
-
-        @keyframes grid-move {
-            0% { background-position: 0 0; }
-            100% { background-position: 50px 50px; }
-        }
-
-        .cyber-grid {
-            background-image:
-                linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            animation: grid-move 30s linear infinite;
-        }
-
-        .pillar-cap {
-            border-top: 3px solid rgba(148, 163, 184, 0.3);
-            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-            height: 4px;
-            margin-bottom: 8px;
-        }
-
-        .scroll-ornament {
-            background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.2) 50%, transparent 100%);
-            height: 1px;
-        }
-
-        .interaction-card {
-            transition: all 0.2s ease;
-            cursor: pointer;
-        }
-
-        .interaction-card:hover {
-            border-color: rgba(148, 163, 184, 0.5);
-            transform: translateY(-2px);
-        }
-
-        .bio-text {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.9);
-            z-index: 1000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-        }
-
-        .modal-content {
-            background: #1e293b;
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            width: 90vw;
-            max-width: 900px;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .modal-text {
-            flex: 1;
-            background: #0f172a;
-            color: #94a3b8;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.875rem;
-            min-height: 300px;
-            padding: 1rem;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            resize: none;
-        }
-
-        .loading-spinner {
-            border: 2px solid rgba(148, 163, 184, 0.2);
-            border-top: 2px solid #60a5fa;
-            border-radius: 50%;
-            width: 1rem;
-            height: 1rem;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 0.5rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
-    <div class="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
-
-    <main class="relative z-10 min-h-screen px-4 py-8">
-        <div class="max-w-6xl mx-auto">
-            <!-- Header -->
-            <div class="flex items-center justify-between mb-10">
-                <div>
-                    <h1 class="text-4xl font-bold serif text-slate-200 mb-2">Neural Analytics</h1>
-                    <p class="text-slate-500 mono">@${username}'s conversation map</p>
-                </div>
-                <a href="/dashboard" class="text-slate-400 hover:text-slate-200 transition-colors mono text-sm flex items-center gap-2">
-                    ← Back to Dashboard
-                </a>
-            </div>
-
-            <!-- Ornamental Divider -->
-            <div class="scroll-ornament mb-10"></div>
-
-            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm">
-                <div class="pillar-cap"></div>
-                <div class="mono text-xs text-slate-500 tracking-widest mb-2">CONVERSATION PARTNERS</div>
-                <h3 class="text-2xl font-bold serif text-slate-200 mb-8">Top Interactions</h3>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    ${stats
-                      .map(
-                        (author, index) => `
-                        <div class="interaction-card bg-slate-800/50 border border-slate-700/50 p-4" onclick="openModal('${encodeURIComponent(author.username)}')">
-                            <div class="flex items-start gap-3 mb-3">
-                                <div class="text-sm font-bold text-blue-400 mono w-6 flex-shrink-0">#${index + 1}</div>
-                                <div class="flex-shrink-0">
-                                    ${author.profileImageUrl
-                                      ? `<img src="${author.profileImageUrl}" alt="${author.name}" class="w-12 h-12 rounded-full border border-slate-600">`
-                                      : `<div class="w-12 h-12 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center">
-                                            <span class="text-slate-400 font-bold serif">${author.name.charAt(0).toUpperCase()}</span>
-                                        </div>`
-                                    }
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <h4 class="font-semibold text-slate-200 truncate serif">${author.name}</h4>
-                                        ${author.isVerified ? '<span class="text-blue-400 text-xs">✓</span>' : ""}
-                                    </div>
-                                    <p class="text-blue-400 text-sm mono truncate">@${author.username}</p>
-                                </div>
-                            </div>
-
-                            ${author.bio ? `<p class="text-xs text-slate-500 mb-3 bio-text serif">${author.bio}</p>` : '<div class="mb-3"></div>'}
-
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <div class="text-lg font-bold text-slate-200 serif">${author.postCount.toLocaleString()}</div>
-                                    <div class="text-xs text-slate-600 mono">conversations</div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-xs text-slate-500 mono">
-                                        ${new Date(author.latestPostDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                    </div>
-                                    <div class="text-xs text-slate-600">latest</div>
-                                </div>
-                            </div>
-
-                            ${author.location ? `
-                            <div class="mt-2 pt-2 border-t border-slate-700/50">
-                                <p class="text-xs text-slate-600 truncate mono">📍 ${author.location}</p>
-                            </div>` : ""}
-                        </div>
-                    `,
-                      )
-                      .join("")}
-                </div>
-
-                ${stats.length === 0 ? `
-                    <div class="text-center py-12">
-                        <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-700">
-                            <span class="text-2xl">◇</span>
-                        </div>
-                        <h3 class="text-lg font-semibold text-slate-300 serif mb-2">No conversation data yet</h3>
-                        <p class="text-slate-500">Your analytics will appear here once we process your posts.</p>
-                    </div>
-                ` : ""}
-            </div>
-
-            <!-- Footer -->
-            <footer class="text-center py-8 mt-12">
-                <div class="text-sm text-slate-600 serif italic">
-                    γνῶθι σεαυτόν — Know Thyself
-                </div>
-            </footer>
-        </div>
-    </main>
-
-    <!-- Modal -->
-    <div id="modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="flex items-center justify-between p-6 border-b border-slate-700/50">
-                <div>
-                    <h3 class="text-lg font-semibold text-slate-200 serif">Conversations with <span id="modal-username" class="text-blue-400"></span></h3>
-                    <p class="text-sm text-slate-500 mono">All your interactions</p>
-                </div>
-                <button class="p-2 hover:bg-slate-700 transition-colors text-slate-400" onclick="closeModal()">✕</button>
-            </div>
-
-            <div class="p-6 flex-1 overflow-hidden">
-                <textarea id="modal-text" class="modal-text w-full" readonly></textarea>
-            </div>
-
-            <div class="flex items-center justify-between p-6 border-t border-slate-700/50">
-                <div class="text-sm text-slate-500 mono">
-                    <span id="loading-indicator" style="display: none;">
-                        <span class="loading-spinner"></span>Loading...
-                    </span>
-                    <span id="content-info" style="display: none;"></span>
-                </div>
-                <button class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 mono text-sm transition-colors border border-slate-600" onclick="copyToClipboard()">
-                    Copy
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let currentContent = '';
-
-        function openModal(username) {
-            const modal = document.getElementById('modal');
-            const modalUsername = document.getElementById('modal-username');
-            const modalText = document.getElementById('modal-text');
-            const loadingIndicator = document.getElementById('loading-indicator');
-            const contentInfo = document.getElementById('content-info');
-
-            modalUsername.textContent = '@' + decodeURIComponent(username);
-            modalText.value = '';
-            currentContent = '';
-
-            modal.style.display = 'flex';
-            loadingIndicator.style.display = 'inline';
-            contentInfo.style.display = 'none';
-
-            const query = 'from:' + decodeURIComponent(username);
-            const url = '/search?' + new URLSearchParams({
-                q: query,
-                username: '${username}',
-                maxTokens: '50000'
-            });
-
-            fetch(url)
-                .then(response => {
-                    if (!response.ok) throw new Error('Failed to fetch conversations');
-                    return response.text();
-                })
-                .then(content => {
-                    currentContent = content;
-                    modalText.value = content;
-                    loadingIndicator.style.display = 'none';
-                    contentInfo.style.display = 'inline';
-                    const tokens = Math.round(content.length/5);
-                    contentInfo.textContent = tokens.toLocaleString() + ' tokens';
-                })
-                .catch(error => {
-                    modalText.value = 'Error loading conversations: ' + error.message;
-                    loadingIndicator.style.display = 'none';
-                    contentInfo.style.display = 'inline';
-                    contentInfo.textContent = 'Error occurred';
-                });
-        }
-
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-        }
-
-        function copyToClipboard() {
-            if (currentContent) {
-                navigator.clipboard.writeText(currentContent).then(() => {
-                    const button = event.target.closest('button');
-                    const original = button.textContent;
-                    button.textContent = 'Copied!';
-                    setTimeout(() => { button.textContent = original; }, 2000);
-                });
-            }
-        }
-
-        document.getElementById('modal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeModal();
-        });
-    </script>
-</body>
-</html>`;
-
 const dashboardPage = (
   user: UserContext["user"],
   stats: UserStats,
+  accessToken: string,
+  isAdmin: boolean,
 ) => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2833,6 +2521,19 @@ const dashboardPage = (
             border-radius: 9999px;
             overflow: hidden;
         }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.8);
+            color: #10b981;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .copy-btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
@@ -2847,7 +2548,6 @@ const dashboardPage = (
                     <a href="/" class="text-3xl font-bold serif text-slate-200">grokthyself</a>
                 </div>
                 <div class="flex items-center gap-6 mono text-sm">
-                    ${stats?.isPremium ? `<a href="/stats?username=${user?.username}" class="text-slate-400 hover:text-slate-200 transition-colors">Stats</a>` : ""}
                     <a href="/logout" class="text-slate-500 hover:text-slate-300 transition-colors">Logout</a>
                 </div>
             </header>
@@ -2877,7 +2577,9 @@ const dashboardPage = (
                         </div>
                         <p class="text-slate-500 mono mb-4">@${user?.username || "unknown"}</p>
 
-                        ${stats?.isPremium ? `
+                        ${
+                          stats?.isPremium
+                            ? `
                         <div class="grid grid-cols-3 gap-6 mt-6">
                             <div class="text-center">
                                 <div class="text-3xl font-bold serif text-slate-200">${stats.postCount?.toLocaleString() || 0}</div>
@@ -2889,16 +2591,24 @@ const dashboardPage = (
                                 </div>
                                 <div class="text-xs text-slate-500 mono tracking-wider">STATUS</div>
                             </div>
-                            <div class="text-center">
+                            ${
+                              stats.historyIsCompleted
+                                ? ``
+                                : `<div class="text-center">
                                 <div class="text-3xl font-bold serif text-slate-200">${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%</div>
                                 <div class="text-xs text-slate-500 mono tracking-wider">COMPLETE</div>
-                            </div>
+                            </div>`
+                            }
                         </div>
-                        ` : ""}
+                        `
+                            : ""
+                        }
                     </div>
                 </div>
 
-                ${stats?.isPremium && stats.scrapeStatus === "in_progress" ? `
+                ${
+                  stats?.isPremium && stats.scrapeStatus === "in_progress"
+                    ? `
                 <div class="mt-8">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-sm text-blue-400 mono">Analyzing your posts...</span>
@@ -2911,9 +2621,13 @@ const dashboardPage = (
                         ${stats.historyCount?.toLocaleString() || 0} / ${stats.historyMaxCount?.toLocaleString() || 0} posts processed
                     </div>
                 </div>
-                ` : ""}
+                `
+                    : ""
+                }
 
-                ${stats?.isPremium ? `
+                ${
+                  stats?.isPremium
+                    ? `
                 <div class="mt-6 p-4 bg-slate-800/50 border border-slate-700/50">
                     <div class="flex items-center gap-3">
                         <div class="w-6 h-6 ${stats.historyIsCompleted && stats.syncedFrom ? "bg-green-500/20 border-green-500/50" : stats.scrapeStatus === "in_progress" ? "bg-blue-500/20 border-blue-500/50" : "bg-slate-700"} border rounded-full flex items-center justify-center">
@@ -2929,10 +2643,14 @@ const dashboardPage = (
                         </div>
                     </div>
                 </div>
-                ` : ""}
+                `
+                    : ""
+                }
             </div>
 
-            ${!stats?.isPremium ? `
+            ${
+              !stats?.isPremium
+                ? `
             <!-- Purchase Card -->
             <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8 border-glow">
                 <div class="pillar-cap"></div>
@@ -2981,57 +2699,149 @@ const dashboardPage = (
                     <span class="text-blue-400">→</span>
                 </a>
             </div>
-            ` : ""}
+            `
+                : ""
+            }
 
-            ${stats?.isPremium ? `
+            ${
+              stats?.isPremium
+                ? `
             <!-- Clone Settings Card -->
             <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
                 <div class="pillar-cap"></div>
                 <div class="mono text-xs text-slate-500 tracking-widest mb-2">CONFIGURATION</div>
-                <h3 class="text-xl font-bold serif text-slate-200 mb-6">Clone Settings</h3>
+                <h3 class="text-xl font-bold serif text-slate-200 mb-6">Settings</h3>
 
                 <label class="flex items-start gap-4 cursor-pointer p-4 bg-slate-800/30 border border-slate-700/30 hover:border-slate-600 transition-colors">
                     <input type="checkbox" id="public-check" ${stats.isPublic ? "checked" : ""}
                         class="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500/50">
                     <div class="flex-1">
-                        <span class="text-slate-200 serif block">Clone is public</span>
-                        <span class="text-sm text-slate-500">When disabled, only you can interact with your clone</span>
+                        <span class="text-slate-200 serif block">MCP is public</span>
+                        <span class="text-sm text-slate-500">When disabled, only you can interact with your MCP</span>
                     </div>
                 </label>
             </div>
-            ` : ""}
+            `
+                : ""
+            }
 
-            ${stats?.isPremium && stats.syncedFrom ? `
-            <!-- Clone Link Card -->
+            ${
+              stats?.isPremium
+                ? `
+            <!-- MCP Access Card -->
             <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
                 <div class="pillar-cap"></div>
-                <div class="mono text-xs text-slate-500 tracking-widest mb-2">YOUR PORTAL</div>
+                <div class="mono text-xs text-slate-500 tracking-widest mb-2">YOUR MCP</div>
                 <h3 class="text-xl font-bold serif text-slate-200 mb-6">
-                    ${stats.historyIsCompleted ? "Your Clone is Live" : "Clone Initializing..."}
+                    ${stats.historyIsCompleted ? "MCP Ready" : "Clone Initializing..."}
                 </h3>
 
-                <div class="bg-slate-800/50 border border-slate-600 p-6 mb-6">
-                    <h4 class="text-slate-300 serif mb-3">Add to your 𝕏 bio:</h4>
-                    <div class="flex items-center gap-3 mb-4">
-                        <code class="flex-1 text-lg mono text-blue-400 bg-slate-900/50 px-4 py-2 border border-slate-700" id="bio-link">
-                            https://grokthyself.com/${user?.username}
-                        </code>
-                        <button onclick="copyBioLink()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 mono text-sm transition-colors border border-slate-600">
-                            Copy
-                        </button>
+                <!-- MCP URL -->
+                <div class="bg-slate-800/50 border border-slate-600 p-4 mb-4">
+                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">MCP Endpoint:</label>
+                    <div class="flex items-center gap-3">
+                        <code class="flex-1 mono text-blue-400 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm break-all" id="mcp-url">https://grokthyself.com/${user?.username}/mcp</code>
+                        <button onclick="copyToClipboard('mcp-url')" class="copy-btn bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 mono text-xs transition-colors border border-slate-600">Copy</button>
                     </div>
-                    <p class="text-sm text-slate-500 text-center serif">Let your followers converse with your neural context 24/7</p>
                 </div>
 
-                <div class="text-center">
-                    <a href="https://grokthyself.com/${user?.username}" target="_blank"
-                       class="inline-flex items-center gap-3 text-blue-400 hover:text-blue-300 transition-colors mono">
-                        <span>Visit Your Clone</span>
-                        <span>→</span>
+                <!-- Install Button -->
+                <div class="text-center mb-6">
+                    <a href="https://installthismcp.com/${encodeURIComponent((user?.username || "") + "'s MCP")}?url=${encodeURIComponent("https://grokthyself.com/" + (user?.username || "") + "/mcp")}" target="_blank">
+                        <img src="https://img.shields.io/badge/Install_MCP-${encodeURIComponent(user?.username || "")}'s%20MCP-1e3a8a?style=for-the-badge" alt="Install MCP" class="mx-auto">
                     </a>
                 </div>
+
+                <!-- API Key -->
+                <div class="bg-slate-800/50 border border-slate-600 p-4 mb-6">
+                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">Your API Key:</label>
+                    <div class="flex items-center gap-3">
+                        <code class="flex-1 mono text-green-400 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm break-all" id="api-key">${accessToken}</code>
+                        <button onclick="copyToClipboard('api-key')" class="copy-btn bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 mono text-xs transition-colors border border-slate-600">Copy</button>
+                    </div>
+                </div>
+
+                <!-- Code Examples -->
+                <details class="mb-4">
+                    <summary class="cursor-pointer text-slate-300 serif font-semibold mb-3">OpenAI SDK Example</summary>
+                    <div class="code-block mt-2" id="openai-code">import OpenAI from "openai";
+
+const client = new OpenAI();
+
+const response = await client.responses.create({
+  model: "gpt-4.1",
+  tools: [{
+    type: "mcp",
+    server_label: "${user?.username}",
+    server_url: "https://grokthyself.com/${user?.username}/mcp",
+    headers: { Authorization: "Bearer ${accessToken}" },
+  }],
+  input: "What does ${user?.username} think about AI?",
+});
+
+console.log(response.output_text);</div>
+                    <button onclick="copyCode('openai-code')" class="copy-btn mt-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 mono text-xs transition-colors border border-slate-600">Copy Code</button>
+                </details>
+
+                <details>
+                    <summary class="cursor-pointer text-slate-300 serif font-semibold mb-3">Anthropic SDK Example</summary>
+                    <div class="code-block mt-2" id="anthropic-code">import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 1024,
+  mcp_servers: [{
+    type: "url",
+    url: "https://grokthyself.com/${user?.username}/mcp",
+    name: "${user?.username}",
+    authorization_token: "${accessToken}",
+  }],
+  messages: [{ role: "user", content: "What does ${user?.username} think about AI?" }],
+});
+
+console.log(response.content);</div>
+                    <button onclick="copyCode('anthropic-code')" class="copy-btn mt-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 mono text-xs transition-colors border border-slate-600">Copy Code</button>
+                </details>
             </div>
-            ` : ""}
+            `
+                : ""
+            }
+
+            ${
+              isAdmin
+                ? `
+            <!-- Admin Section -->
+            <div class="bg-slate-900/50 border border-red-700/50 p-8 backdrop-blur-sm mb-8">
+                <div class="pillar-cap" style="border-top-color: rgba(239, 68, 68, 0.3);"></div>
+                <div class="mono text-xs text-red-500 tracking-widest mb-2">ADMIN ONLY</div>
+                <h3 class="text-xl font-bold serif text-slate-200 mb-6">User Management</h3>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">Enter username:</label>
+                    <div class="flex items-center gap-3">
+                        <input type="text" id="admin-username" placeholder="username"
+                            class="flex-1 mono text-slate-200 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm focus:border-red-500/50 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button onclick="openUserSync()" class="flex-1 bg-red-900/30 hover:bg-red-800/40 text-red-400 px-4 py-3 mono text-sm transition-colors border border-red-700/50">
+                        Sync User (Make Premium)
+                    </button>
+                    <button onclick="openUserAdmin()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3 mono text-sm transition-colors border border-slate-600">
+                        View Admin Panel
+                    </button>
+                </div>
+
+                <p class="text-xs text-slate-500 mt-4 mono">
+                    Sync will mark user as premium and start downloading their posts.
+                </p>
+            </div>
+            `
+                : ""
+            }
 
             <!-- Footer -->
             <footer class="text-center py-8 border-t border-slate-800/50 mt-12">
@@ -3043,6 +2853,24 @@ const dashboardPage = (
     </main>
 
     <script>
+        function openUserSync() {
+            const username = document.getElementById('admin-username')?.value?.trim();
+            if (username) {
+                window.open('/' + username + '/sync', '_blank');
+            } else {
+                alert('Please enter a username');
+            }
+        }
+
+        function openUserAdmin() {
+            const username = document.getElementById('admin-username')?.value?.trim();
+            if (username) {
+                window.open('/' + username + '/admin', '_blank');
+            } else {
+                alert('Please enter a username');
+            }
+        }
+
         const publicCheck = document.getElementById('public-check');
         if (publicCheck) {
             publicCheck.addEventListener('change', function() {
@@ -3052,10 +2880,22 @@ const dashboardPage = (
             });
         }
 
-        function copyBioLink() {
-            const linkElement = document.getElementById('bio-link');
-            if (linkElement) {
-                navigator.clipboard.writeText(linkElement.textContent.trim()).then(() => {
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                navigator.clipboard.writeText(element.textContent.trim()).then(() => {
+                    const button = event.target.closest('button');
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied!';
+                    setTimeout(() => { button.textContent = originalText; }, 2000);
+                });
+            }
+        }
+
+        function copyCode(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                navigator.clipboard.writeText(element.textContent).then(() => {
                     const button = event.target.closest('button');
                     const originalText = button.textContent;
                     button.textContent = 'Copied!';
@@ -3074,16 +2914,20 @@ export default {
       if (!env.TWITTERAPI_SECRET) {
         return new Response(
           "TWITTERAPI_SECRET environment variable is required",
-          {
-            status: 500,
-          },
+          { status: 500 },
         );
       }
 
       const url = new URL(request.url);
+      const [_tld, _domain, subdomain] = url.hostname.split(".").reverse();
 
-      if (url.pathname === "/mcp") {
+      if (url.pathname.endsWith("/mcp")) {
+        // e.g. /janwilmake/mcp
         return handleMcp(request, env, ctx);
+      }
+
+      if (subdomain) {
+        return new Response("Not found", { status: 404 });
       }
 
       // Handle login page
@@ -3105,7 +2949,7 @@ export default {
           return new Response("Unauthorized", { status: 401 });
         }
 
-        const username = url.pathname.split("/")[1];
+        const username = url.pathname.split("/")[1].toLowerCase();
 
         try {
           // Get user's Durable Object
@@ -3123,20 +2967,31 @@ export default {
       }
 
       if (url.pathname.endsWith("/sync")) {
-        const username = url.pathname.split("/")[1];
+        const username = url.pathname.split("/")[1].toLowerCase();
 
         if (!ctx.user?.username) {
           return new Response("Unauthorized", { status: 401 });
+        }
+
+        // Only admin can sync other users
+        if (ctx.user.username !== ADMIN_USERNAME) {
+          return new Response("Unauthorized - Admin only", { status: 401 });
         }
 
         const userDO = env.USER_DO.get(
           env.USER_DO.idFromName(DO_NAME_PREFIX + username),
         );
 
-        const user = await userDO.ensureUserExists(username);
-        // Start sync after payment
+        // Ensure user exists and mark as premium (syncing makes them premium)
+        await userDO.ensureUserExists(username);
+        await userDO.exec(
+          "UPDATE users SET synced_from = CURRENT_TIMESTAMP WHERE username = ? AND synced_from IS NULL",
+          username,
+        );
+
+        // Start sync after marking premium
         await userDO.startSync(username);
-        return new Response("Started sync");
+        return new Response(`Started sync for ${username} (marked as premium)`);
       }
 
       // Handle dashboard page
@@ -3148,7 +3003,9 @@ export default {
         try {
           // Get user's Durable Object
           const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + ctx.user.username),
+            env.USER_DO.idFromName(
+              DO_NAME_PREFIX + ctx.user.username.toLowerCase(),
+            ),
           );
 
           // Handle query parameters for public/featured updates
@@ -3187,7 +3044,13 @@ export default {
 
           // Get user stats (this will now include the updated values)
           const stats = await userDO.getUserStats();
-          const dashboardHtml = dashboardPage(ctx.user, stats);
+          const isAdmin = ctx.user.username === ADMIN_USERNAME;
+          const dashboardHtml = dashboardPage(
+            ctx.user,
+            stats,
+            ctx.accessToken || "",
+            isAdmin,
+          );
 
           return new Response(dashboardHtml, {
             headers: { "Content-Type": "text/html;charset=utf8" },
@@ -3201,94 +3064,7 @@ export default {
       if (url.pathname === "/stripe-webhook") {
         return handleStripeWebhook(request, env);
       }
-
-      if (url.pathname === "/stats") {
-        const username = url.searchParams.get("username") || ctx.user?.username;
-
-        if (!username) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-
-        try {
-          // Get user's Durable Object
-          const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + username),
-          );
-
-          // Get author stats
-          const userStats = await userDO.getUserStats();
-          const stats = await userDO.getInteractions(150);
-
-          if (
-            ctx.user.username !== username &&
-            ctx.user?.username !== ADMIN_USERNAME &&
-            !userStats?.isPublic
-          ) {
-            return new Response("User did not make their posts public", {
-              status: 401,
-            });
-          }
-
-          const statsHtml = statsPage(username, stats, userStats);
-          return new Response(statsHtml, {
-            headers: { "Content-Type": "text/html;charset=utf8" },
-          });
-        } catch (error) {
-          console.error("Stats page error:", error);
-
-          if (error.message === "User not found") {
-            return new Response("User not found", { status: 404 });
-          }
-
-          if (error.message === "User did not make posts public") {
-            return new Response("This user has not made their posts public", {
-              status: 403,
-            });
-          }
-
-          return new Response("Error loading stats page", { status: 500 });
-        }
-      }
-
-      if (url.pathname === "/search") {
-        const username = url.searchParams.get("username") || ctx.user.username;
-        if (!username) {
-          return new Response("Please provide ?username", { status: 400 });
-        }
-        const userDO = env.USER_DO.get(
-          env.USER_DO.idFromName(DO_NAME_PREFIX + username),
-        );
-
-        const toolResponse = await handleSearchTool(
-          request,
-          {
-            q: url.searchParams.get("q"),
-            maxTokens: url.searchParams.get("maxTokens"),
-          },
-          env,
-          ctx,
-          userDO,
-        );
-        return new Response(toolResponse.content[0].text);
-      }
-
-      const username = url.pathname.slice(1);
-      const usernameRegex = /^[a-zA-Z0-9_]{1,15}$/;
-
-      const isValid =
-        usernameRegex.test(username) &&
-        !username.startsWith("_") &&
-        !/^\d+$/.test(username); // Not only numbers
-
-      if (username === "" || username.includes("/") || !isValid) {
-        return new Response("Not found", { status: 404 });
-      }
-
-      // valid potential x username
-
-      return new Response(shareHtml.replaceAll("{{username}}", username), {
-        headers: { "Content-Type": "text/html;charset=utf8" },
-      });
+      return new Response("Not found", { status: 404 });
     },
     { isLoginRequired: false, scope: "profile" },
   ),

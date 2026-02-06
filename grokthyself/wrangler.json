@@ -4,14 +4,10 @@
   "compatibility_date": "2025-07-01",
   "main": "worker.ts",
   "routes": [
-    {
-      "custom_domain": true,
-      "pattern": "grokthyself.com"
-    },
-    {
-      "custom_domain": true,
-      "pattern": "www.grokthyself.com"
-    }
+    { "custom_domain": true, "pattern": "grokthyself.com" },
+    { "custom_domain": true, "pattern": "www.grokthyself.com" },
+    { "pattern": "*.grokthyself.com/*", "zone_name": "grokthyself.com" },
+    { "pattern": "grokthyself.com/*", "zone_name": "grokthyself.com" }
   ],
   "assets": { "directory": "./" },
   "observability": { "logs": { "enabled": true } },
