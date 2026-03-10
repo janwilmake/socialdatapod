@@ -1,7 +1,7 @@
 # TODO
 
 - BUG: FOUND 0 CONVERSATION THREADS >.<
-- Fix login for MCP on chatgpt as well as on https://mcpchat.wilmake.com
+- Fix login for MCP on chatgpt as well as on https://mcpchat.wilmake.com // contextarea.com
 - Icon won't work but it MAY work if we use a subdomain. Seems heavily cached so need to know more! Test different clients too.
 - Fix: Show more correct percentage that estimates based on total posts and stucks at 95% until done
 - Fix: Include quoted posts - It should show the quoted thing too!!! context should be available in result already. Just simply make it part of the text in this case.
@@ -39,15 +39,15 @@ Talk to people and find a way to position it such that there's a quick wow-momen
 
 ## Chat with people
 
-- Macieklaskus (meeting) - https://x.com/messages/153933445-370640384 (scared to talk cuz its so tempting)
+- Macieklaskus (meeting) - https://x.com/messages/153933445-370640384
 - Michael Gold (meeting) https://x.com/i/chat/10756682-153933445
-- Josh http://x.com/joshtriedcoding/status/1977337502844563557
-- https://x.com/lwz_ai (he was curious about it before, big CEO money)
-- Rob (Vietnam) https://x.com/robj3d3
-- maurice_kleine - https://x.com/maurice_kleine/status/1975378556902654139
-- marcuswquinn - https://x.com/marcuswquinn/status/1975207453974556762
-- Scobleizer - https://x.com/Scobleizer/status/1975102387758285091
-- https://x.com/monadoid (agent-pod)
+- http://x.com/joshtriedcoding/status/1977337502844563557
+- https://x.com/lwz_ai
+- https://x.com/robj3d3
+- https://x.com/maurice_kleine/status/1975378556902654139
+- https://x.com/marcuswquinn/status/1975207453974556762
+- https://x.com/Scobleizer/status/1975102387758285091
+- https://x.com/monadoid
 
 ## Main hypotheses
 
