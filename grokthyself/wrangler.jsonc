@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "grokthyself2",
+  "compatibility_date": "2026-04-06",
+  "main": "worker.ts",
+  "durable_objects": {
+    "bindings": [{ "name": "USER_DO", "class_name": "UserDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserDO"] }],
+  "queues": {
+    "producers": [{ "binding": "SYNC_QUEUE", "queue": "x-archive-sync" }],
+    "consumers": [
+      {
+        "queue": "x-archive-sync",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": { "crons": ["0 2 * * *"] },
+  "assets": { "directory": "./public" },
+  "routes": [
+    { "custom_domain": true, "pattern": "grokthyself.com" },
+    { "custom_domain": true, "pattern": "www.grokthyself.com" }
+  ]
+}

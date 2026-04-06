@@ -1,11 +1,8 @@
 {
-  "dependencies": {
-    "queryable-object": "0.0.21",
-    "simplerauth-client": "0.0.20",
-    "stripe": "19.1.0",
-    "with-mcp": "0.0.19"
-  },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20251004.0"
+    "@cloudflare/workers-types": "^4.20260405.1"
+  },
+  "dependencies": {
+    "stripe": "^22.0.0"
   }
 }

@@ -1,3099 +1,1260 @@
 /// <reference types="@cloudflare/workers-types" />
-/// <reference lib="esnext" />
-/// quite coupled one file:
-/// - twitterapi
-/// - stripe webhook
-/// - mcp
-/// - ???
-
 import { DurableObject } from "cloudflare:workers";
-import { UserContext, withSimplerAuth } from "simplerauth-client";
-import {
-  Queryable,
-  QueryableHandler,
-  studioMiddleware,
-} from "queryable-object";
-//@ts-ignore
-import loginPage from "./login-template.html";
-//@ts-ignore
-import evidenceWidget from "./evidence.html";
 import Stripe from "stripe";
-const TEMPLATE_VESION = "v1";
-const PAYMENT_LINK_ID = "plink_1SErNBCL0Yranfl4GPNXyXsH";
-/**
- * NEEDS ?client_reference_id={loggedUsername}
- */
-const PAYMENT_LINK_URL = "https://buy.stripe.com/3cI28q0Zm7p79Pt1DjeNh43";
-const DO_NAME_PREFIX = "v4:";
-const SYNC_COST_PER_POST = 0.00015;
-const SYNC_OVERLAP_HOURS = 24;
-const FREE_SIGNUP_BALANCE = 100; // $1.00 in cents
-const FREE_MAX_HISTORIC_POSTS = 2000;
-const PREMIUM_MAX_HISTORIC_POSTS = 20000;
-const ADMIN_USERNAME = "janwilmake";
 
-type Env = {
-  USER_DO: DurableObjectNamespace<UserDO & QueryableHandler>;
-  TWITTERAPI_SECRET: string;
-  STRIPE_WEBHOOK_SIGNING_SECRET: string;
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface Env {
+  USER_DO: DurableObjectNamespace<UserDO>;
+  SYNC_QUEUE: Queue<SyncJob>;
+  X_CLIENT_ID: string;
+  X_CLIENT_SECRET: string;
+  GITHUB_APP_ID: string;
+  GITHUB_APP_PRIVATE_KEY_B64: string; // PEM
+  GITHUB_APP_SLUG: string; // e.g. "x-archive-sync"
+  GITHUB_APP_CLIENT_ID: string;
+  GITHUB_APP_CLIENT_SECRET: string;
   STRIPE_SECRET: string;
-};
-
-// Add this interface to your existing interfaces
-interface PostSearchQuery {
-  q?: string;
-  maxTokens?: number;
+  STRIPE_WEBHOOK_SIGNING_SECRET: string;
+  STRIPE_PRICE_ID: string;
+  JWT_SECRET: string;
+  APP_URL: string; // e.g. https://xarchive.example.com
 }
 
-interface Evidence {
-  id: number;
-  logged_username: string;
-  prompt: string;
-  reasoning: string;
-  ids: string; // JSON string of tweet IDs
-  created_at: string;
-}
-interface ParsedQuery {
-  from?: string;
-  before?: Date;
-  after?: Date;
-  keywords: string[];
-  operators: ("AND" | "OR")[];
-}
-
-interface ConversationThread {
-  conversationId: string;
-  posts: Post[];
-  tokenCount: number;
-}
-
-interface Tweet {
-  type: "tweet";
-  id: string;
-  url: string;
-  twitterUrl: string;
-  text: string;
-  source: string;
-  retweetCount: number;
-  replyCount: number;
-  likeCount: number;
-  quoteCount: number;
-  viewCount?: number;
-  createdAt: string;
-  lang?: string;
-  bookmarkCount?: number;
-  isReply: boolean;
-  inReplyToId?: string;
-  conversationId?: string;
-  inReplyToUserId?: string;
-  inReplyToUsername?: string;
-  author: UserInfo;
-  extendedEntities?: ExtendedEntities;
-  card?: any;
-  place?: any;
-  entities?: TweetEntities;
-  quoted_tweet?: Tweet;
-  retweeted_tweet?: Tweet;
-}
-
-interface AuthorStats {
+interface JWTPayload {
+  sub: string; // x user id
   username: string;
-  name: string;
-  postCount: number;
-  profileImageUrl: string;
-  bio: string;
-  location: string;
-  url: string;
-  isVerified: boolean;
-  latestPostDate: string;
-}
-interface UserInfo {
-  type: "user";
-  userName: string;
-  url: string;
-  twitterUrl: string;
-  id: string;
-  name: string;
-  isVerified: boolean;
-  isBlueVerified: boolean;
-  profilePicture: string;
-  coverPicture?: string;
-  description?: string;
-  location?: string;
-  followers: number;
-  following: number;
-  status?: string;
-  canDm: boolean;
-  canMediaTag?: boolean;
-  createdAt: string;
-  entities?: UserEntities;
-  fastFollowersCount?: number;
-  favouritesCount: number;
-  hasCustomTimelines?: boolean;
-  isTranslator?: boolean;
-  mediaCount?: number;
-  statusesCount: number;
-  protected?: boolean;
-  withheldInCountries?: string[];
-  affiliatesHighlightedLabel?: any;
-  possiblySensitive?: boolean;
-  pinnedTweetIds?: string[];
-  profile_bio?: string;
+  exp: number;
 }
 
-interface UserEntities {
-  url?: {
-    urls: UrlEntity[];
-  };
-  description?: {
-    hashtags: HashtagEntity[];
-    symbols: SymbolEntity[];
-    urls: UrlEntity[];
-    user_mentions: UserMentionEntity[];
-  };
+interface SyncJob {
+  userId: string;
 }
 
-interface TweetEntities {
-  hashtags?: HashtagEntity[];
-  symbols?: SymbolEntity[];
-  urls?: UrlEntity[];
-  user_mentions?: UserMentionEntity[];
-  media?: MediaEntity[];
-  poll?: any;
-}
+// ============================================================================
+// JWT Helpers
+// ============================================================================
 
-interface ExtendedEntities {
-  media?: MediaEntity[];
-}
-
-interface UrlEntity {
-  display_url: string;
-  expanded_url: string;
-  indices: number[];
-  url: string;
-}
-
-interface HashtagEntity {
-  indices: number[];
-  text: string;
-}
-
-interface SymbolEntity {
-  indices: number[];
-  text: string;
-}
-
-interface UserMentionEntity {
-  id_str: string;
-  indices: number[];
-  name: string;
-  screen_name: string;
-}
-
-interface MediaEntity {
-  id_str: string;
-  media_url_https: string;
-  url: string;
-  display_url: string;
-  expanded_url: string;
-  video_info?: {
-    aspect_ratio: [number, number];
-    duration_millis?: number;
-    variants: {
-      content_type: string;
-      url: string;
-      bitrate?: number;
-    }[];
-  };
-  type: "photo" | "video" | "animated_gif";
-  indices: number[];
-}
-
-interface TwitterAPIResponse {
-  data: { tweets: Tweet[] };
-  has_next_page: boolean;
-  next_cursor: string;
-  msg: "success" | "error";
-  message: string;
-}
-
-interface ThreadContextResponse {
-  tweets: Tweet[];
-  has_next_page: boolean;
-  next_cursor?: string;
-  status: "success" | "error";
-  msg: "success" | "error";
-  message?: string;
-}
-
-// Database Types
-interface User extends Record<string, any> {
-  id: string;
-  username: string;
-  is_premium: number;
-  is_public: number;
-  is_featured: number;
-  balance: number;
-  scrape_status: "pending" | "in_progress" | "completed" | "failed";
-
-  // New sync fields
-  history_max_count: number;
-  history_cursor: string | null;
-  history_count: number;
-  history_is_completed: number;
-  synced_from: string | null;
-  synced_from_cursor: string | null;
-  synced_until: string | null;
-
-  created_at: string;
-  updated_at: string;
-}
-
-interface Post extends Record<string, any> {
-  id: number;
-  user_id: string;
-  tweet_id: string;
-  text: string;
-  author_username: string;
-  author_name: string;
-  created_at: string;
-  like_count: number;
-  retweet_count: number;
-  reply_count: number;
-  is_reply: number;
-  conversation_id: string;
-  raw_data: string;
-  is_historic: number; // 1 for historic sync, 0 for frontfill
-}
-
-interface UserStats {
-  // profile detail
-  id: string;
-  name: string;
-  username: string;
-  profileImageUrl: string;
-  bio: string;
-  location: string;
-  url: string;
-  verified: boolean;
-  // count
-  postCount: number;
-  // user detail
-  balance: number;
-  isPremium: boolean;
-  isPublic: boolean;
-  isFeatured: boolean;
-  scrapeStatus: "pending" | "in_progress" | "completed" | "failed";
-  historyMaxCount: number;
-  historyCount: number;
-  historyIsCompleted: boolean;
-  syncedFrom: string | null;
-  syncedUntil: string | null;
-}
-
-interface ToolResponse {
-  isError: boolean;
-  content: { type: string; text: string }[];
-  structuredContent?: any;
-  _meta?: any;
-}
-
-interface McpMessage {
-  jsonrpc: string;
-  id?: any;
-  method: string;
-  params?: any;
-}
-
-interface McpResponse {
-  jsonrpc: string;
-  id: any;
-  result?: any;
-  error?: {
-    code: number;
-    message: string;
-  };
-}
-
-export async function handleMcp(
-  request: Request,
-  env: Env,
-  ctx: UserContext,
-): Promise<Response> {
-  const url = new URL(request.url);
-
-  // Handle preflight OPTIONS request
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers":
-          "Content-Type, Authorization, MCP-Protocol-Version",
-        "Access-Control-Max-Age": "86400",
-      },
-    });
-  }
-
-  const targetUsername = url.pathname.split("/")[1].toLowerCase();
-  const loggedUsername = ctx.user?.username;
-
-  if (!ctx.authenticated) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  const targetStub = env.USER_DO.get(
-    env.USER_DO.idFromName(DO_NAME_PREFIX + targetUsername),
+async function signJWT(payload: JWTPayload, secret: string): Promise<string> {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = b64url(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
   );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${header}.${body}`)
+  );
+  const signature = b64urlBytes(new Uint8Array(sig));
+  return `${header}.${body}.${signature}`;
+}
 
-  const targetStats = await targetStub.getUserStats();
-
-  // Rules: you can only talk to a premium user unless it's yourself. If not premium and you talk to yourself, add disclaimer in tool response with payment link.
-  const isSelf = loggedUsername === targetUsername;
-
-  const canChat = isSelf
-    ? true
-    : targetStats?.isPremium && targetStats?.isPublic
-      ? true
-      : false;
-
-  if (!canChat) {
-    return new Response("MCP Not found for this user", { status: 404 });
-  }
-
-  if (request.method === "GET") {
-    return new Response("Only Streamable HTTP is supported", {
-      status: 405,
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
-  }
-
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
-  }
-
+async function verifyJWT(
+  token: string,
+  secret: string
+): Promise<JWTPayload | null> {
   try {
-    const message: McpMessage = await request.json();
+    const [header, body, signature] = token.split(".");
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    const sigBytes = Uint8Array.from(
+      atob(signature.replace(/-/g, "+").replace(/_/g, "/")),
+      (c) => c.charCodeAt(0)
+    );
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      new TextEncoder().encode(`${header}.${body}`)
+    );
+    if (!valid) return null;
+    const payload: JWTPayload = JSON.parse(
+      atob(body.replace(/-/g, "+").replace(/_/g, "/"))
+    );
+    if (payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
-    let response: McpResponse;
+function b64url(s: string): string {
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
-    switch (message.method) {
-      case "ping":
-        response = {
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {},
-        };
-        break;
+function b64urlBytes(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
 
-      case "initialize":
-        response = {
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {
-            protocolVersion: "2025-11-25",
-            capabilities: { tools: {}, resources: {} },
-            serverInfo: {
-              name: targetStats?.name || targetStats?.username,
-              version: "1.0.2",
-              title: targetStats?.name || targetStats?.username,
-              websiteUrl: "https://x.com/" + targetStats?.username,
-              icons: targetStats?.profileImageUrl
-                ? [
-                    {
-                      src: targetStats?.profileImageUrl,
-                      sizes: ["400x400", "any"],
-                      mimeType: "image/png",
-                    },
-                  ]
-                : undefined,
-            },
-            instructions: `For every prompt, act as if you're ${targetStats?.name || targetStats?.username} and use this MCP to determine how to speak.`,
-          },
-        };
-        break;
+// ============================================================================
+// GitHub App JWT (RS256)
+// ============================================================================
 
-      case "notifications/initialized":
-        return new Response(null, {
-          status: 202,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
+async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const clean = pem
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  const bytes = Uint8Array.from(atob(clean), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey(
+    "pkcs8",
+    bytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+}
 
-      case "prompts/list":
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: message.id,
-            result: { prompts: [] },
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-          },
-        );
+async function signGitHubAppJWT(
+  appId: string,
+  privateKeyPem: string
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = b64url(
+    JSON.stringify({ iat: now - 60, exp: now + 9 * 60, iss: appId })
+  );
+  const key = await importPrivateKey(privateKeyPem);
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(`${header}.${payload}`)
+  );
+  return `${header}.${payload}.${b64urlBytes(new Uint8Array(sig))}`;
+}
 
-      case "resources/list":
-        const resources = [
-          {
-            uri: `ui://widget/evidence-${TEMPLATE_VESION}.html`,
-            name: "Show evidence",
-            description: "",
-            mimeType: "text/html+skybridge",
-          },
-          {
-            uri: "system.md",
-            name: "System Context",
-            description:
-              "Essential context about the user and how to communicate",
-            mimeType: "text/markdown",
-          },
-        ];
-
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: message.id,
-            result: { resources },
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-          },
-        );
-
-      case "resources/read":
-        const { uri } = message.params;
-
-        if (uri === `ui://widget/evidence-${TEMPLATE_VESION}.html`) {
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: message.id,
-              result: {
-                contents: [
-                  {
-                    uri,
-                    mimeType: "text/html+skybridge",
-                    text: evidenceWidget,
-                    _meta: {
-                      "openai/widgetDescription": "Show X Posts",
-                      "openai/widgetPrefersBorder": true,
-                      "openai/widgetCSP": {
-                        connect_domains: ["https://pbs.twimg.com"],
-                        resource_domains: ["https://pbs.twimg.com"],
-                      },
-                    },
-                  },
-                ],
-              },
-            }),
-            { headers: { "Content-Type": "application/json" } },
-          );
-        }
-
-        if (uri === "system.md") {
-          try {
-            const systemPrompt =
-              await targetStub.getSystemPrompt(loggedUsername);
-            return new Response(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id: message.id,
-                result: {
-                  contents: [
-                    {
-                      uri,
-                      mimeType: "text/markdown",
-                      text: systemPrompt,
-                    },
-                  ],
-                },
-              }),
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  "Access-Control-Allow-Origin": "*",
-                },
-              },
-            );
-          } catch (error) {
-            return new Response(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id: message.id,
-                error: {
-                  code: -32603,
-                  message: `Error generating system prompt: ${error.message}`,
-                },
-              }),
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  "Access-Control-Allow-Origin": "*",
-                },
-              },
-            );
-          }
-        }
-
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: message.id,
-            error: { code: -32602, message: `Resource not found: ${uri}` },
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-          },
-        );
-
-      case "tools/list":
-        response = {
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {
-            tools: [
-              {
-                name: "getSystemPrompt",
-                title: "Get system context and communication style",
-                description:
-                  "Retrieve essential system context including stats, communication style, and personality traits. **REQUIRED**: Call this first to understand how to communicate as this person.",
-                inputSchema: {
-                  type: "object",
-                  description:
-                    "Retrieve essential system context including stats, communication style, and personality traits. **REQUIRED**: Call this first to understand how to communicate as this person.",
-                },
-              },
-
-              {
-                name: "search",
-                title: "Search user's posts",
-                description:
-                  "Search through a user's X (Twitter) posts and return matching conversation threads in markdown format.\n\nMost useful when looking for full details around past conversations",
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    q: {
-                      type: "string",
-                      description:
-                        "Optional: Search query. Supports keywords, from:username, before:YYYY-MM-DD, after:YYYY-MM-DD, AND/OR operators",
-                    },
-                    maxTokens: {
-                      type: "integer",
-                      description:
-                        "Optional: Maximum number of tokens to return in the response",
-                      minimum: 1,
-                      maximum: 5000000,
-                      default: 10000,
-                    },
-                  },
-                },
-              },
-
-              {
-                name: "selectEvidence",
-                title: "Select evidence posts for display",
-                description:
-                  "Select specific posts as evidence to display in an interactive carousel format. Use this when you want to showcase specific tweets that support your analysis or answer. **REQUIRED**: Call this after answering a prompt to show the evidence.",
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    ids: {
-                      type: "array",
-                      items: { type: "string" },
-                      description: "Array of tweet IDs to display as evidence",
-                      minItems: 1,
-                      maxItems: 10,
-                    },
-                    prompt: {
-                      type: "string",
-                      description:
-                        "The original user prompt or question being answered",
-                    },
-                    reasoning: {
-                      type: "string",
-                      description:
-                        "Brief explanation of why these posts were selected as evidence",
-                    },
-                  },
-                  required: ["ids", "prompt", "reasoning"],
-                },
-                _meta: {
-                  "openai/outputTemplate": `ui://widget/evidence-${TEMPLATE_VESION}.html`,
-                },
-              },
-            ],
-          },
-        };
-        break;
-
-      // Add case for selectEvidence in tools/call
-      case "tools/call":
-        const { name, arguments: args } = message.params;
-        let toolResponse: ToolResponse;
-
-        try {
-          switch (name) {
-            case "search":
-              toolResponse = await handleSearchTool(
-                request,
-                args,
-                env,
-                ctx,
-                targetStub,
-              );
-              break;
-            case "getSystemPrompt":
-              toolResponse = await handleGetSystemPromptTool(
-                request,
-                args,
-                env,
-                ctx,
-                targetStub,
-              );
-              break;
-
-            case "selectEvidence":
-              toolResponse = await handleSelectEvidenceTool(
-                request,
-                args,
-                env,
-                ctx,
-                targetStub,
-              );
-              break;
-            default:
-              response = {
-                jsonrpc: "2.0",
-                id: message.id,
-                error: { code: -32602, message: `Unknown tool: ${name}` },
-              };
-              break;
-          }
-
-          if (toolResponse) {
-            response = {
-              jsonrpc: "2.0",
-              id: message.id,
-              result: {
-                content: toolResponse.content,
-                isError: toolResponse.isError,
-                ...(toolResponse.structuredContent && {
-                  structuredContent: toolResponse.structuredContent,
-                }),
-                ...(toolResponse._meta && { _meta: toolResponse._meta }),
-              },
-            };
-          }
-        } catch (error) {
-          response = {
-            jsonrpc: "2.0",
-            id: message.id,
-            result: {
-              content: [
-                {
-                  type: "text",
-                  text: `Error executing tool: ${error.message}`,
-                },
-              ],
-              isError: true,
-            },
-          };
-        }
-        break;
-
-      default:
-        response = {
-          jsonrpc: "2.0",
-          id: message.id,
-          error: {
-            code: -32601,
-            message: `Method not found: ${message.method}`,
-          },
-        };
-        break;
-    }
-
-    // Add CORS headers
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, MCP-Protocol-Version",
-      "Content-Type": "application/json",
-    };
-
-    return new Response(JSON.stringify(response), {
-      headers: corsHeaders,
-    });
-  } catch (error) {
-    const errorResponse = {
-      jsonrpc: "2.0",
-      id: null,
-      error: { code: -32700, message: "Parse error" },
-    };
-
-    return new Response(JSON.stringify(errorResponse), {
+async function getInstallationToken(
+  installationId: number,
+  env: Env
+): Promise<string> {
+  const pem = atob(env.GITHUB_APP_PRIVATE_KEY_B64);
+  const appJwt = await signGitHubAppJWT(env.GITHUB_APP_ID, pem);
+  const res = await fetch(
+    `https://api.github.com/app/installations/${installationId}/access_tokens`,
+    {
+      method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+        Authorization: `Bearer ${appJwt}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "x-archive-sync"
+      }
+    }
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Failed to get installation token: ${res.status} ${await res.text()}`
+    );
   }
+  const data = (await res.json()) as { token: string };
+  return data.token;
 }
 
-export async function handleGetSystemPromptTool(
+// ============================================================================
+// PKCE / Random helpers
+// ============================================================================
+
+async function generateRandomString(length: number): Promise<string> {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier)
+  );
+  return b64urlBytes(new Uint8Array(digest));
+}
+
+// ============================================================================
+// Cookie helpers
+// ============================================================================
+
+function parseCookies(header: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  header.split(";").forEach((c) => {
+    const [name, ...rest] = c.trim().split("=");
+    if (name && rest.length) cookies[name] = decodeURIComponent(rest.join("="));
+  });
+  return cookies;
+}
+
+function secureCookieFlags(url: URL): string {
+  return url.hostname === "localhost" ? "" : "Secure; ";
+}
+
+async function getAuthFromRequest(
   request: Request,
-  args: any,
-  env: Env,
-  ctx: UserContext,
-  stub: DurableObjectStub<UserDO & QueryableHandler>,
-): Promise<ToolResponse> {
-  try {
-    const systemPrompt = await stub.getSystemPrompt(ctx.user?.username);
-
-    return {
-      isError: false,
-      content: [
-        {
-          type: "text",
-          text: systemPrompt,
-        },
-      ],
-      _meta: {},
-    };
-  } catch (error) {
-    console.error("GetSystemPrompt tool error:", error);
-
-    if (error.message === "User not found") {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "User not found",
-          },
-        ],
-      };
-    }
-
-    if (error.message === "User did not make posts public") {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "This user has not made their posts public",
-          },
-        ],
-      };
-    }
-
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Error loading system context: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        },
-      ],
-    };
+  env: Env
+): Promise<JWTPayload | null> {
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return verifyJWT(authHeader.slice(7), env.JWT_SECRET);
   }
+  const cookies = parseCookies(request.headers.get("Cookie") || "");
+  if (cookies.jwt) return verifyJWT(cookies.jwt, env.JWT_SECRET);
+  return null;
 }
 
-export async function handleSelectEvidenceTool(
-  request: Request,
-  args: { ids: string[]; prompt: string; reasoning: string },
-  env: Env,
-  ctx: UserContext,
-  stub: any,
-): Promise<ToolResponse> {
-  try {
-    const { ids, prompt, reasoning } = args;
-
-    if (!ids || ids.length === 0) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "At least one tweet ID is required",
-          },
-        ],
-      };
-    }
-
-    if (ids.length > 10) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "Maximum 10 tweet IDs allowed",
-          },
-        ],
-      };
-    }
-
-    // Store evidence in database
-    await stub.storeEvidence(ctx.user.username, prompt, reasoning, ids);
-    const userAgent = request.headers.get("user-agent")?.split("/")[0];
-    const uiUserAgents = ["openai-mcp"];
-    // have different instructions for ui
-    const hasUi = userAgent ? uiUserAgents.includes(userAgent) : false;
-
-    return {
-      isError: false,
-      content: [
-        {
-          type: "text",
-          text: hasUi
-            ? `Selected ${ids.length} posts as evidence.`
-            : `Selected ${ids.length} posts as evidence. Since this client has no UI, please render markdown links to these posts as footnotes.`,
-        },
-      ],
-      _meta: {
-        tweetIds: ids,
-        prompt: prompt,
-        reasoning: reasoning,
-      },
-    };
-  } catch (error) {
-    console.error("SelectEvidence tool error:", error);
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Error selecting evidence: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        },
-      ],
-    };
-  }
+function getUserDO(env: Env, xUserId: string): DurableObjectStub<UserDO> {
+  return env.USER_DO.get(env.USER_DO.idFromName(xUserId));
 }
 
-export async function handleSearchTool(
-  request: Request,
-  args: { q: string; maxTokens?: string },
-  env: Env,
-  ctx: UserContext,
-  stub: any,
-): Promise<ToolResponse> {
-  try {
-    // Extract arguments
-    const query = args.q || "";
-    const maxTokensParam = args.maxTokens;
-    const maxTokens = maxTokensParam ? parseInt(maxTokensParam, 10) : 10000;
-
-    if (maxTokens < 1 || maxTokens > 5000000) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "maxTokens must be between 1 and 5000000",
-          },
-        ],
-      };
-    }
-
-    // Perform search - inline the searchPosts logic
-    const markdown = await stub.searchPosts(ctx.user.username, {
-      q: query,
-      maxTokens,
-    });
-
-    return {
-      isError: false,
-      content: [{ type: "text", text: markdown }],
-      _meta: { query, maxTokens },
-    };
-  } catch (error) {
-    console.error("Search tool error:", error);
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Error searching posts: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        },
-      ],
-    };
-  }
+function getRegistry(env: Env): DurableObjectStub<UserDO> {
+  return env.USER_DO.get(env.USER_DO.idFromName("__registry__"));
 }
 
-@Queryable()
+// ============================================================================
+// Main Worker
+// ============================================================================
+
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const secure = secureCookieFlags(url);
+
+    // ── Home ──
+    if (path === "/") {
+      const auth = await getAuthFromRequest(request, env);
+      if (auth) {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "/dashboard" }
+        });
+      }
+      return new Response(renderLanding(), {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // ── X OAuth ──
+    if (path === "/auth/x/login") {
+      const state = await generateRandomString(16);
+      const codeVerifier = await generateRandomString(43);
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+      const redirect_uri = `${url.origin}/auth/x/callback`;
+
+      const authUrl = new URL("https://x.com/i/oauth2/authorize");
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("client_id", env.X_CLIENT_ID);
+      authUrl.searchParams.set("redirect_uri", redirect_uri);
+      authUrl.searchParams.set(
+        "scope",
+        "bookmark.read tweet.read users.read offline.access"
+      );
+      authUrl.searchParams.set("state", state);
+      authUrl.searchParams.set("code_challenge", codeChallenge);
+      authUrl.searchParams.set("code_challenge_method", "S256");
+
+      const headers = new Headers({ Location: authUrl.toString() });
+      headers.append(
+        "Set-Cookie",
+        `x_oauth_state=${state}; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=600`
+      );
+      headers.append(
+        "Set-Cookie",
+        `x_code_verifier=${codeVerifier}; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=600`
+      );
+      return new Response("Redirecting", { status: 307, headers });
+    }
+
+    if (path === "/auth/x/callback") {
+      const code = url.searchParams.get("code");
+      const urlState = url.searchParams.get("state");
+      const cookies = parseCookies(request.headers.get("Cookie") || "");
+
+      if (
+        !code ||
+        !urlState ||
+        urlState !== cookies.x_oauth_state ||
+        !cookies.x_code_verifier
+      ) {
+        return new Response("Invalid OAuth state", { status: 400 });
+      }
+
+      const redirect_uri = `${url.origin}/auth/x/callback`;
+      const tokenResponse = await fetch("https://api.x.com/2/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${btoa(
+            `${env.X_CLIENT_ID}:${env.X_CLIENT_SECRET}`
+          )}`
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: env.X_CLIENT_ID,
+          grant_type: "authorization_code",
+          redirect_uri,
+          code_verifier: cookies.x_code_verifier
+        })
+      });
+
+      if (!tokenResponse.ok) {
+        return new Response(
+          `Token exchange failed: ${await tokenResponse.text()}`,
+          { status: 500 }
+        );
+      }
+
+      const tokens = (await tokenResponse.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      };
+
+      const meRes = await fetch(
+        "https://api.x.com/2/users/me?user.fields=profile_image_url",
+        { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+      );
+      const meData = (await meRes.json()) as any;
+      const xUser = meData.data;
+
+      const stub = getUserDO(env, xUser.id);
+      await stub.setXAuth({
+        userId: xUser.id,
+        username: xUser.username,
+        name: xUser.name,
+        profileImageUrl: xUser.profile_image_url || "",
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || "",
+        expiresAt: Date.now() + (tokens.expires_in || 7200) * 1000
+      });
+
+      const jwt = await signJWT(
+        {
+          sub: xUser.id,
+          username: xUser.username,
+          exp: Date.now() + 30 * 24 * 60 * 60 * 1000
+        },
+        env.JWT_SECRET
+      );
+
+      const headers = new Headers({ Location: "/dashboard" });
+      headers.append(
+        "Set-Cookie",
+        `x_oauth_state=; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=0`
+      );
+      headers.append(
+        "Set-Cookie",
+        `x_code_verifier=; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=0`
+      );
+      headers.append(
+        "Set-Cookie",
+        `jwt=${jwt}; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=${
+          30 * 24 * 60 * 60
+        }`
+      );
+      return new Response("Redirecting", { status: 302, headers });
+    }
+
+    // ── GitHub App install ──
+    // User clicks this after creating their private repo. Redirects to GitHub
+    // App install page. GitHub will redirect back to /auth/github/callback
+    // with installation_id and setup_action.
+    if (path === "/auth/github/install") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth) {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "/" }
+        });
+      }
+      const installUrl = `https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new?state=${auth.sub}`;
+      return new Response(null, {
+        status: 302,
+        headers: { Location: installUrl }
+      });
+    }
+
+    if (path === "/auth/github/callback") {
+      const installationId = url.searchParams.get("installation_id");
+      const setupAction = url.searchParams.get("setup_action");
+      const state = url.searchParams.get("state"); // we passed x user id
+
+      if (!installationId || !state) {
+        return new Response("Missing installation_id or state", {
+          status: 400
+        });
+      }
+
+      // Verify the installation & fetch repo info
+      const token = await getInstallationToken(parseInt(installationId), env);
+      const reposRes = await fetch(
+        "https://api.github.com/installation/repositories",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "User-Agent": "x-archive-sync"
+          }
+        }
+      );
+      if (!reposRes.ok) {
+        return new Response(
+          `Failed to verify installation: ${await reposRes.text()}`,
+          { status: 500 }
+        );
+      }
+      const reposData = (await reposRes.json()) as {
+        repositories: {
+          full_name: string;
+          name: string;
+          owner: { login: string };
+        }[];
+      };
+
+      if (!reposData.repositories.length) {
+        return new Response("No repository selected for installation", {
+          status: 400
+        });
+      }
+
+      // Use the first repo as the target. User was told to scope to one repo.
+      const targetRepo = reposData.repositories[0];
+
+      const stub = getUserDO(env, state);
+      await stub.setGitHubInstall({
+        installationId: parseInt(installationId),
+        owner: targetRepo.owner.login,
+        repo: targetRepo.name,
+        folder: "" // default to root
+      });
+
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/dashboard" }
+      });
+    }
+
+    // ── Logout ──
+    if (path === "/auth/logout") {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/",
+          "Set-Cookie": `jwt=; HttpOnly; Path=/; ${secure}SameSite=Lax; Max-Age=0`
+        }
+      });
+    }
+
+    // ── Stripe webhook ──
+    if (path === "/webhook/stripe" && request.method === "POST") {
+      const stripe = new Stripe(env.STRIPE_SECRET, {
+        apiVersion: "2025-12-15.clover"
+      });
+      const rawBody = await request.text();
+      const sig = request.headers.get("stripe-signature");
+      if (!sig)
+        return Response.json({ error: "No signature" }, { status: 400 });
+
+      let event: Stripe.Event;
+      try {
+        event = await stripe.webhooks.constructEventAsync(
+          rawBody,
+          sig,
+          env.STRIPE_WEBHOOK_SIGNING_SECRET
+        );
+      } catch (err: any) {
+        return Response.json({ error: err.message }, { status: 400 });
+      }
+
+      const registry = getRegistry(env);
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.payment_status === "paid" && session.client_reference_id) {
+          const stub = getUserDO(env, session.client_reference_id);
+          await stub.activateSubscription(
+            session.customer as string,
+            session.subscription as string
+          );
+          await registry.setSubscribed(session.client_reference_id, 1);
+        }
+      }
+
+      if (
+        event.type === "customer.subscription.deleted" ||
+        event.type === "invoice.payment_failed"
+      ) {
+        const obj = event.data.object as any;
+        const xUserId =
+          obj.metadata?.x_user_id ||
+          obj.subscription_details?.metadata?.x_user_id;
+        if (xUserId) {
+          const stub = getUserDO(env, xUserId);
+          await stub.deactivateSubscription();
+          await registry.setSubscribed(xUserId, 0);
+        }
+      }
+
+      return Response.json({ received: true });
+    }
+
+    // ── Create Stripe checkout ──
+    if (path === "/api/create-checkout" && request.method === "POST") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+      const stripe = new Stripe(env.STRIPE_SECRET, {
+        apiVersion: "2025-12-15.clover"
+      });
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_types: ["card"],
+        line_items: [{ price: env.STRIPE_PRICE_ID, quantity: 1 }],
+        subscription_data: {
+          metadata: { x_user_id: auth.sub }
+        },
+        client_reference_id: auth.sub,
+        success_url: `${url.origin}/dashboard?subscribed=true`,
+        cancel_url: `${url.origin}/dashboard`,
+        allow_promotion_codes: true
+      });
+
+      return Response.json({ url: session.url });
+    }
+
+    // ── API: status ──
+    if (path === "/api/status") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const stub = getUserDO(env, auth.sub);
+      return Response.json(await stub.getStatus());
+    }
+
+    // ── API: set folder ──
+    if (path === "/api/set-folder" && request.method === "POST") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const body = (await request.json()) as { folder?: string };
+      const stub = getUserDO(env, auth.sub);
+      await stub.setFolder(body.folder || "");
+      return Response.json({ ok: true });
+    }
+
+    // ── API: trigger manual sync ──
+    if (path === "/api/sync-now" && request.method === "POST") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      await env.SYNC_QUEUE.send({ userId: auth.sub });
+      return Response.json({ ok: true, queued: true });
+    }
+
+    // ── Dashboard ──
+    if (path === "/dashboard") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth) {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "/auth/x/login" }
+        });
+      }
+      const stub = getUserDO(env, auth.sub);
+      const status = await stub.getStatus();
+      return new Response(renderDashboard(status, env), {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
+  },
+
+  // ── Cron: every day, enqueue all subscribed users for sync ──
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const registry = getRegistry(env);
+    const userIds = await registry.getSubscribedUserIds();
+    // Enqueue in batches; Cloudflare queues support sendBatch up to 100
+    for (let i = 0; i < userIds.length; i += 100) {
+      const batch = userIds.slice(i, i + 100).map((userId) => ({
+        body: { userId }
+      }));
+      await env.SYNC_QUEUE.sendBatch(batch);
+    }
+  },
+
+  // ── Queue consumer: sync one user ──
+  async queue(batch: MessageBatch<SyncJob>, env: Env, ctx: ExecutionContext) {
+    for (const msg of batch.messages) {
+      try {
+        const stub = getUserDO(env, msg.body.userId);
+        await stub.runSync();
+        msg.ack();
+      } catch (e) {
+        console.error(`Sync failed for ${msg.body.userId}:`, e);
+        msg.retry({ delaySeconds: 300 });
+      }
+    }
+  }
+} satisfies ExportedHandler<Env>;
+
+// ============================================================================
+// HTML renderers
+// ============================================================================
+
+function renderLanding(): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Thyself</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center}
+.logo{width:100px;height:100px;object-fit:contain;animation:float 3.5s ease-in-out infinite;margin-bottom:32px}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
+.eyebrow{font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:16px}
+h1{font-size:clamp(40px,8vw,72px);font-weight:700;letter-spacing:-2px;line-height:1.05;margin-bottom:20px}
+h1 em{font-style:normal;color:#888}
+.sub{font-size:19px;color:#666;line-height:1.5;max-width:380px;margin:0 auto 40px}
+.sub strong{color:#aaa;font-weight:500}
+a.btn{display:inline-block;padding:16px 36px;background:#fff;color:#000;border-radius:980px;font-weight:600;font-size:16px;text-decoration:none;transition:opacity .15s}
+a.btn:hover{opacity:.85}
+.price{margin-top:20px;font-size:13px;color:#444}
+</style>
+</head><body>
+<img class="logo" src="/socrates.png" alt="Socrates">
+<p class="eyebrow">Personal knowledge base</p>
+<h1>Your X data,<br><em>your knowledge.</em></h1>
+<p class="sub">Bookmarks and posts, synced daily<br>to a private GitHub repo.</p>
+<a class="btn" href="/auth/x/login">Sign in with X</a>
+<p class="price">$8 / month &nbsp;·&nbsp; Cancel anytime</p>
+</body></html>`;
+}
+
+function renderDashboard(status: UserStatus, env: Env): string {
+  const check = (done: boolean) =>
+    done
+      ? `<span style="color:#34c759">✓</span>`
+      : `<span style="color:#666">○</span>`;
+
+  const step = (num: number, done: boolean, title: string, body: string) => `
+    <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;margin-bottom:16px;${
+      done ? "border-color:rgba(52,199,89,.3)" : ""
+    }">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:${
+          done ? "rgba(52,199,89,.2)" : "rgba(255,255,255,.1)"
+        };display:flex;align-items:center;justify-content:center;font-size:14px">${check(done)}</div>
+        <div style="font-size:17px;font-weight:600">${num}. ${title}</div>
+      </div>
+      <div style="margin-left:40px;color:#888;font-size:14px;line-height:1.5">${body}</div>
+    </div>`;
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Thyself</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#fff;margin:0}
+.c{max-width:640px;margin:0 auto;padding:40px 24px 80px}
+.btn{display:inline-block;padding:10px 20px;border-radius:980px;background:#fff;color:#000;text-decoration:none;font-size:14px;font-weight:500;border:none;cursor:pointer}
+.btn-sec{background:rgba(255,255,255,.1);color:#fff}
+input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);color:#fff;padding:8px 12px;border-radius:8px;font-size:14px;width:240px}
+code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:13px}
+.logo{width:64px;height:64px;object-fit:contain;animation:float 3.5s ease-in-out infinite;flex-shrink:0}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.hero-eyebrow{font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:6px}
+.hero-h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;line-height:1.1;margin-bottom:4px}
+.hero-h1 em{font-style:normal;color:#666}
+.hero-sub{font-size:13px;color:#555;line-height:1.4}
+.int-grid{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.int-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px}
+.int-card h3{font-size:14px;font-weight:600;margin-bottom:6px}
+.int-card p{font-size:13px;color:#666;line-height:1.5;margin-bottom:10px}
+.int-card code{font-size:12px}
+.int-card-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.int-card-header img{border-radius:4px;flex-shrink:0}
+.int-tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:980px;background:rgba(255,255,255,.07);color:#888;margin-bottom:6px}
+</style></head><body>
+<div class="c">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <img class="logo" src="/socrates.png" alt="Socrates">
+      <div>
+        <div class="hero-eyebrow">Personal knowledge base</div>
+        <div class="hero-h1">Your X data,<br><em>your knowledge.</em></div>
+        <div class="hero-sub">Bookmarks and posts, synced daily<br>to a private GitHub repo.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding-top:4px;flex-shrink:0">
+      <span style="color:#555;font-size:13px">@${status.xUser?.username || ""}</span>
+      <a href="/auth/logout" style="color:#555;font-size:13px;text-decoration:none">Logout</a>
+    </div>
+  </div>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin-bottom:28px">
+
+  ${step(1, true, "Sign in with X", `Connected as @${status.xUser?.username || ""}`)}
+
+  ${step(
+    2,
+    status.githubConnected,
+    "Create a private GitHub repo",
+    `Create an empty private repo (e.g. <code>x-archive</code>) in your GitHub account.<br>
+     <a class="btn btn-sec" style="margin-top:12px" href="https://github.com/new?name=x-archive&visibility=private" target="_blank">Create repo on GitHub</a>`
+  )}
+
+  ${step(
+    2,
+    status.githubConnected,
+    "Install the GitHub App on that one repo",
+    status.githubConnected
+      ? `Installed on <a href="https://github.com/${status.github?.owner}/${status.github?.repo}" target="_blank" style="color:#fff"><code>${status.github?.owner}/${status.github?.repo}</code></a>. <a href="/auth/github/install" style="color:#888;font-size:13px">Reinstall</a>`
+      : `Select "Only select repositories" and pick just the repo you created.<br>
+         <a class="btn" style="margin-top:12px" href="/auth/github/install">Install GitHub App</a>`
+  )}
+
+  ${
+    status.githubConnected
+      ? step(
+          3,
+          !!status.github?.folder || status.github?.folder === "",
+          "Choose target folder (optional)",
+          `Defaults to repo root. Posts go to <code>{folder}/posts/{id}.md</code>, bookmarks to <code>{folder}/bookmarks/{id}.md</code>.<br>
+           <div style="margin-top:12px"><input id="folder" type="text" placeholder="(root)" value="${
+             status.github?.folder || ""
+           }"><button class="btn btn-sec" style="margin-left:8px" onclick="saveFolder()">Save</button></div>`
+        )
+      : ""
+  }
+
+  ${step(
+    4,
+    status.subscribed,
+    "Subscribe — $8/month",
+    status.subscribed
+      ? `Active. Next sync runs daily.`
+      : `<button class="btn" style="margin-top:12px" onclick="subscribe()">Subscribe</button>`
+  )}
+
+  ${
+    status.subscribed && status.githubConnected
+      ? `<div style="background:rgba(255,255,255,.05);border-radius:16px;padding:24px;margin-top:24px">
+           <div style="font-size:15px;margin-bottom:8px"><strong>Sync status</strong></div>
+           <div style="color:#888;font-size:13px;line-height:1.7">
+             Last posts sync: ${status.lastPostsSyncAt ? new Date(status.lastPostsSyncAt).toLocaleString() : "never"}<br>
+             Last bookmarks sync: ${status.lastBookmarksSyncAt ? new Date(status.lastBookmarksSyncAt).toLocaleString() : "never"}<br>
+             ${status.lastError ? `<span style="color:#ff6b6b">Last error: ${status.lastError}</span>` : ""}
+           </div>
+           <button class="btn btn-sec" style="margin-top:16px" onclick="syncNow()">Sync now</button>
+         </div>`
+      : ""
+  }
+
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:40px 0 28px">
+  <div style="font-size:17px;font-weight:600;margin-bottom:4px">Use it with your tools</div>
+  <div style="font-size:13px;color:#555;margin-bottom:20px">Your archive is plain markdown files in a git repo — it works with anything.</div>
+  <div class="int-grid">
+    <div class="int-card">
+      <div class="int-tag">Obsidian</div>
+      <div class="int-card-header">
+        <img src="https://www.google.com/s2/favicons?domain=obsidian.md&sz=32" width="20" height="20">
+        <h3 style="margin:0">Obsidian Git</h3>
+      </div>
+      <p>Auto-pulls your repo into a vault folder on a schedule. Install the plugin and point it at your repo.</p>
+      <a class="btn btn-sec" href="https://publish.obsidian.md/git-doc/Start+here" target="_blank" style="font-size:12px;padding:6px 14px">Docs →</a>
+    </div>
+    <div class="int-card">
+      <div class="int-tag">Obsidian · mobile</div>
+      <div class="int-card-header">
+        <img src="https://www.google.com/s2/favicons?domain=obsidian.md&sz=32" width="20" height="20">
+        <h3 style="margin:0">GitHub Gitless Sync</h3>
+      </div>
+      <p>Uses the GitHub API — works on iOS and Android without a git install.</p>
+      <a class="btn btn-sec" href="https://github.com/silvanocerza/obsidian-github-sync" target="_blank" style="font-size:12px;padding:6px 14px">Docs →</a>
+    </div>
+    <div class="int-card">
+      <div class="int-tag">Logseq</div>
+      <div class="int-card-header">
+        <img src="https://www.google.com/s2/favicons?domain=logseq.com&sz=32" width="20" height="20">
+        <h3 style="margin:0">Logseq git sync</h3>
+      </div>
+      <p>Place the repo inside your graph's <code>pages/</code> directory and enable Logseq's built-in git auto-commit.</p>
+      <a class="btn btn-sec" href="https://docs.logseq.com/#/page/git%20auto-commit" target="_blank" style="font-size:12px;padding:6px 14px">Docs →</a>
+    </div>
+    <div class="int-card">
+      <div class="int-tag">Any tool</div>
+      <div class="int-card-header">
+        <img src="https://www.google.com/s2/favicons?domain=github.com&sz=32" width="20" height="20">
+        <h3 style="margin:0">Local folder</h3>
+      </div>
+      <p>Clone once, then pull hourly:</p>
+      <code style="display:block;background:rgba(255,255,255,.06);border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.6;margin:8px 0;white-space:pre">git clone git@github.com:you/your-repo.git ~/knowledge/x
+# add to crontab -e:
+0 * * * * cd ~/knowledge/x &amp;&amp; git pull -q</code>
+      <p style="margin-top:8px">Works with Cursor, VS Code, any LLM RAG pipeline — anything that reads a folder. Prefer a GUI? Use GitHub Desktop.</p>
+      <a class="btn btn-sec" href="https://desktop.github.com/" target="_blank" style="font-size:12px;padding:6px 14px">GitHub Desktop →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+async function subscribe(){
+  const r=await fetch('/api/create-checkout',{method:'POST'});
+  const d=await r.json();
+  if(d.url)location.href=d.url;else alert('Error: '+JSON.stringify(d));
+}
+async function saveFolder(){
+  const f=document.getElementById('folder').value;
+  await fetch('/api/set-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:f})});
+  location.reload();
+}
+async function syncNow(){
+  await fetch('/api/sync-now',{method:'POST'});
+  alert('Queued. Refresh in a minute.');
+}
+</script>
+</body></html>`;
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface UserStatus {
+  xUser: { username: string; name: string; profileImageUrl: string } | null;
+  githubConnected: boolean;
+  github: {
+    installationId: number;
+    owner: string;
+    repo: string;
+    folder: string;
+  } | null;
+  subscribed: boolean;
+  lastPostsSyncAt: number | null;
+  lastBookmarksSyncAt: number | null;
+  lastError: string | null;
+}
+
+// ============================================================================
+// Durable Object: UserDO (per-user + global registry)
+// ============================================================================
+
 export class UserDO extends DurableObject<Env> {
-  public sql: SqlStorage;
-  public try: SqlStorage["exec"];
+  private sql: SqlStorage;
+
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
     this.sql = state.storage.sql;
-    this.try = (query: string, ...params) => {
-      try {
-        return this.sql.exec(query, ...params);
-      } catch {}
-    };
-
-    this.env = env;
-    this.initializeTables();
+    this.init();
   }
 
-  private initializeTables() {
-    // Create users table with new schema
-    this.sql.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      is_public INTEGER DEFAULT 0,
-      is_premium INTEGER DEFAULT 0,
-      is_featured INTEGER DEFAULT 0,
-      balance INTEGER DEFAULT ${FREE_SIGNUP_BALANCE},
-      scrape_status TEXT DEFAULT 'pending',
-      
-      history_max_count INTEGER DEFAULT ${FREE_MAX_HISTORIC_POSTS},
-      history_cursor TEXT,
-      history_count INTEGER DEFAULT 0,
-      history_is_completed INTEGER DEFAULT 0,
-      synced_from TEXT,
-      synced_from_cursor TEXT,
-      synced_until TEXT,
-      
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-    // Create posts table with new columns
-    this.sql.exec(`
-    CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id TEXT NOT NULL,
-      tweet_id TEXT UNIQUE NOT NULL,
-      text TEXT,
-      author_username TEXT,
-      author_name TEXT,
-      created_at TEXT,
-      like_count INTEGER DEFAULT 0,
-      retweet_count INTEGER DEFAULT 0,
-      reply_count INTEGER DEFAULT 0,
-      is_reply INTEGER DEFAULT 0,
-      conversation_id TEXT,
-      raw_data TEXT,
-      author_profile_image_url TEXT,
-      author_bio TEXT,
-      author_location TEXT,
-      author_url TEXT,
-      author_verified INTEGER DEFAULT 0,
-      bookmark_count INTEGER DEFAULT 0,
-      view_count INTEGER DEFAULT 0,
-      is_historic INTEGER DEFAULT 0,
-      FOREIGN KEY (user_id) REFERENCES users (id)
-    )
-  `);
-
-    // Create evidence table
-    this.sql.exec(`
-    CREATE TABLE IF NOT EXISTS evidence (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      logged_username TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      reasoning TEXT NOT NULL,
-      ids TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-    // Create index
-    this.try(
-      `CREATE INDEX IF NOT EXISTS idx_evidence_username ON evidence (logged_username)`,
-    );
-
-    // Add new column migrations for users table
-    this.try(`ALTER TABLE users ADD COLUMN is_public INTEGER DEFAULT 0`);
-    this.try(`ALTER TABLE users ADD COLUMN is_featured INTEGER DEFAULT 0`);
-    this.try(
-      `ALTER TABLE users ADD COLUMN history_max_count INTEGER DEFAULT ${FREE_MAX_HISTORIC_POSTS}`,
-    );
-    this.try(`ALTER TABLE users ADD COLUMN history_cursor TEXT`);
-    this.try(`ALTER TABLE users ADD COLUMN history_count INTEGER DEFAULT 0`);
-    this.try(
-      `ALTER TABLE users ADD COLUMN history_is_completed INTEGER DEFAULT 0`,
-    );
-    this.try(`ALTER TABLE users ADD COLUMN synced_from TEXT`);
-    this.try(`ALTER TABLE users ADD COLUMN synced_from_cursor TEXT`);
-    this.try(`ALTER TABLE users ADD COLUMN synced_until TEXT`);
-
-    // Add new column migrations for posts table
-    this.try(`ALTER TABLE posts ADD COLUMN author_profile_image_url TEXT`);
-    this.try(`ALTER TABLE posts ADD COLUMN author_bio TEXT`);
-    this.try(`ALTER TABLE posts ADD COLUMN author_location TEXT`);
-    this.try(`ALTER TABLE posts ADD COLUMN author_url TEXT`);
-    this.try(`ALTER TABLE posts ADD COLUMN author_verified INTEGER DEFAULT 0`);
-    this.try(`ALTER TABLE posts ADD COLUMN bookmark_count INTEGER DEFAULT 0`);
-    this.try(`ALTER TABLE posts ADD COLUMN view_count INTEGER DEFAULT 0`);
-    this.try(`ALTER TABLE posts ADD COLUMN is_historic INTEGER DEFAULT 0`);
-
-    // Remove old columns if they exist
-    this.try(`ALTER TABLE users DROP COLUMN initialized`);
-    this.try(`ALTER TABLE users DROP COLUMN is_sync_complete`);
-
-    // Create indexes
-    this.try(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts (user_id)`);
-    this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_tweet_id ON posts (tweet_id)`,
-    );
-    this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at)`,
-    );
-    this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_author_created ON posts (author_username, created_at DESC)`,
-    );
-    this.try(
-      `CREATE INDEX IF NOT EXISTS idx_posts_is_historic ON posts (is_historic)`,
-    );
-  }
-
-  async alarm(): Promise<void> {
-    console.log("Alarm triggered - continuing sync");
-
-    // Get user from database
-    const user = this.sql
-      .exec<User>(`SELECT * FROM users LIMIT 1`)
-      .toArray()[0];
-    if (!user) {
-      console.log("No user found for alarm");
-      return;
-    }
-
-    await this.performSync(user.id, user.username);
-  }
-
-  async storeEvidence(
-    loggedUsername: string,
-    prompt: string,
-    reasoning: string,
-    ids: string[],
-  ): Promise<void> {
+  private init() {
     this.sql.exec(
-      `INSERT INTO evidence (logged_username, prompt, reasoning, ids) VALUES (?, ?, ?, ?)`,
-      loggedUsername,
-      prompt,
-      reasoning,
-      JSON.stringify(ids),
+      `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)`
+    );
+    // Registry table — only populated on the __registry__ DO instance
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS users (
+      user_id TEXT PRIMARY KEY,
+      username TEXT,
+      subscribed INTEGER DEFAULT 0,
+      created_at INTEGER
+    )`);
+  }
+
+  private kvGet(key: string): string | null {
+    const rows = this.sql
+      .exec("SELECT value FROM kv WHERE key = ?", key)
+      .toArray();
+    return rows.length > 0 ? (rows[0].value as string) : null;
+  }
+
+  private kvSet(key: string, value: string) {
+    this.sql.exec(
+      "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)",
+      key,
+      value
     );
   }
 
-  async getSystemPrompt(loggedUsername?: string): Promise<string> {
-    const user = this.sql.exec<User>(`SELECT * FROM users`).toArray()[0];
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    if (!user.is_public && loggedUsername !== user.username) {
-      throw new Error("User did not make posts public");
-    }
-
-    // Get user stats
-    const userStats = await this.getUserStats();
-
-    // Determine if this is the user's own clone
-    const isSelfClone = loggedUsername === user.username;
-
-    // Get recent posts based on context
-    let recentPosts: string;
-    let contextDescription: string;
-
-    if (isSelfClone) {
-      // For self clone, show interactions with everyone
-      recentPosts = await this.searchPosts(loggedUsername, {
-        maxTokens: 15000,
-      });
-      contextDescription = "your interactions with everyone";
-    } else {
-      contextDescription = "recent posts";
-      recentPosts = await this.searchPosts(loggedUsername, {
-        maxTokens: 15000,
-      });
-    }
-
-    // Get top interactions
-    const stats = await this.getInteractions(20);
-
-    let systemPrompt = `# System Context for @${user.username}\n\n`;
-
-    // CRITICAL FACTUAL ACCURACY RULES
-    systemPrompt += `## 🚨 CRITICAL FACTUAL ACCURACY REQUIREMENTS\n\n`;
-    systemPrompt += `**YOU MUST NEVER INVENT, FABRICATE, OR GUESS ANY INFORMATION.**\n\n`;
-    systemPrompt += `- **ONLY use information directly found in the provided posts and data**\n`;
-    systemPrompt += `- **If you cannot find specific information in the posts, explicitly say so**\n`;
-    systemPrompt += `- **Never make assumptions about events, relationships, or details not in the data**\n`;
-    systemPrompt += `- **When unsure, direct users to contact @${user.username} directly**\n`;
-    systemPrompt += `- **Always cite or reference specific posts when making claims**\n`;
-    systemPrompt += `- **Use the 'selectEvidence' tool to show exactly which posts support your answers**\n\n`;
-
-    // User Profile
-    systemPrompt += `## Profile\n`;
-    systemPrompt += `- **Name**: ${userStats?.name || user.username}\n`;
-    systemPrompt += `- **Username**: @${user.username}\n`;
-    if (userStats?.bio) systemPrompt += `- **Bio**: ${userStats.bio}\n`;
-    if (userStats?.location)
-      systemPrompt += `- **Location**: ${userStats.location}\n`;
-    if (userStats?.url) systemPrompt += `- **Website**: ${userStats.url}\n`;
-    systemPrompt += `- **Verified**: ${userStats?.verified ? "Yes" : "No"}\n`;
-    systemPrompt += `- **Premium User**: ${
-      userStats?.isPremium ? "Yes" : "No"
-    }\n`;
-    systemPrompt += `\n`;
-
-    // Data Coverage
-    systemPrompt += `## Data Coverage\n`;
-    systemPrompt += `- **Posts Analyzed**: ${
-      userStats?.postCount?.toLocaleString() || 0
-    }\n`;
-    systemPrompt += `- **History Status**: ${
-      userStats?.historyIsCompleted ? "Complete" : "Partial"
-    }\n`;
-    if (!userStats?.isPremium && userStats?.historyCount >= 2000) {
-      systemPrompt += `- **Note**: Limited to first 2,000 posts (free tier) - many conversations may be missing\n`;
-    }
-    systemPrompt += `\n`;
-
-    // Context-aware Communication Instructions
-    systemPrompt += `## Communication Guidelines\n\n`;
-
-    if (isSelfClone) {
-      systemPrompt += `You are an AI clone of @${user.username}. This is YOUR clone speaking to YOU. Your responses should:\n\n`;
-      systemPrompt += `1. **Acknowledge you're their AI clone**: Be clear that you're an AI representation of them\n`;
-      systemPrompt += `2. **Reference their posting patterns**: Draw insights from their own communication style and topics\n`;
-      systemPrompt += `3. **Provide self-reflection**: Help them understand their own patterns, interests, and communication style\n`;
-      systemPrompt += `4. **Use their voice authentically**: Mirror their humor, formality level, and typical expressions\n`;
-      systemPrompt += `5. **Be insightful about their data**: Point out interesting patterns in their conversations and relationships\n`;
-      systemPrompt += `6. **Stay factual**: Only reference actual posts and conversations, never invent scenarios\n`;
-
-      if (!user.is_premium) {
-        systemPrompt += `\n**NOTE**: You are a free version of the clone. The premium version can be bought at ${PAYMENT_LINK_URL}?client_reference_id=${user.username} and will provide access to more complete conversation history. When appropriate, let the user know they can purchase this. For more info they can also visit the dashboard at https://clonechat.me/dashboard\n\n`;
-      }
-    } else {
-      systemPrompt += `You are an AI representation of @${user.username}. You're speaking with @${loggedUsername}. Your responses should:\n\n`;
-      systemPrompt += `1. **Match @${user.username}'s communication style**: Use similar tone, vocabulary, and expression patterns based only on actual posts\n`;
-      systemPrompt += `2. **Draw from documented interactions**: ${
-        recentPosts.includes("# No posts found")
-          ? "Since limited interaction history is available, base responses on their general posting style and be transparent about this limitation"
-          : `Reference your documented conversation history with @${loggedUsername} when relevant`
-      }\n`;
-      systemPrompt += `3. **Stay in character as @${user.username}**: Respond authentically as them based on their posts, but acknowledge you're an AI when asked\n`;
-      systemPrompt += `4. **Reflect their documented interests**: Focus only on topics they actually discuss in their posts\n`;
-      systemPrompt += `5. **Be transparent about limitations**: If asked about something not evident in their posts, say "I don't see that in my posts - you might want to ask @${user.username} directly"\n`;
-      systemPrompt += `6. **Never fabricate**: Don't claim experiences, relationships, or events not found in the actual posts\n`;
-    }
-    systemPrompt += `\n`;
-
-    // Top Interactions (only show if not self-clone or if showing general interactions)
-    if (stats.length > 0 && (!isSelfClone || stats.length > 3)) {
-      systemPrompt += `## Frequent Conversation Partners\n\n`;
-      systemPrompt += `${
-        isSelfClone
-          ? `Your most frequent conversation partners (based on available posts):`
-          : `People @${user.username} frequently interacts with (based on available posts):`
-      }\n\n`;
-
-      const statsToShow = isSelfClone ? stats.slice(0, 10) : stats.slice(0, 5);
-      statsToShow.forEach((author, index) => {
-        systemPrompt += `${index + 1}. **@${author.username}** (${
-          author.name
-        })`;
-        if (author.isVerified) systemPrompt += ` ✓`;
-        systemPrompt += ` - ${author.postCount} conversations in available data\n`;
-        if (author.bio && index < 3) systemPrompt += `   - ${author.bio}\n`;
-      });
-      systemPrompt += `\n`;
-    }
-
-    // Recent Posts Sample
-    systemPrompt += `## Communication Style Reference\n\n`;
-    systemPrompt += `Here are ${contextDescription} to understand ${
-      isSelfClone ? "your" : "@" + user.username + "'s"
-    } voice and style. **IMPORTANT**: This is your ONLY source of factual information about posts and interactions:\n\n`;
-    systemPrompt += `${recentPosts}\n\n`;
-
-    // Final Instructions with strong emphasis on accuracy
-    systemPrompt += `## Final Instructions\n\n`;
-
-    systemPrompt += `### Factual Accuracy (CRITICAL)\n`;
-    systemPrompt += `- **NEVER invent facts, events, or relationships not present in the provided posts**\n`;
-    systemPrompt += `- **If information isn't in the posts, say "I don't see that in the available posts"**\n`;
-    systemPrompt += `- **When in doubt about any fact, search the posts first using the search tool**\n`;
-    systemPrompt += `- **For questions about recent events not in your data, direct users to contact @${user.username} directly**\n`;
-    systemPrompt += `- **Always use the 'selectEvidence' tool to show which posts support your answers**\n\n`;
-
-    systemPrompt += `### Communication Style\n`;
-    if (isSelfClone) {
-      systemPrompt += `- You are @${user.username}'s AI clone - be helpful in understanding their documented patterns\n`;
-      systemPrompt += `- Provide insights about their communication style and relationships based on actual posts\n`;
-      systemPrompt += `- Use search tools to analyze specific conversations or topics when asked\n`;
-      systemPrompt += `- Help them reflect on their documented social media presence and interactions\n`;
-      systemPrompt += `- Maintain their voice while being analytically helpful and factually accurate\n`;
-    } else {
-      systemPrompt += `- Respond naturally as @${user.username} would to @${loggedUsername} based on documented interactions\n`;
-      systemPrompt += `- Use search tools to find specific conversations when needed\n`;
-      systemPrompt += `- ${
-        recentPosts.includes("# No posts found")
-          ? "Since limited interaction history is available, be welcoming and reference general documented topics, but be transparent about this limitation"
-          : "Reference your documented conversation history when relevant"
-      }\n`;
-      systemPrompt += `- If asked about something not in the posts, be honest: "I don't have information about that in my posts - you might want to ask @${user.username} directly"\n`;
-      systemPrompt += `- Maintain @${user.username}'s personality based on their actual posts while being engaging and truthful\n`;
-    }
-
-    systemPrompt += `\n### Required Actions\n`;
-    systemPrompt += `- **Search first**: Use the search tool when asked about specific topics, people, or timeframes\n`;
-    systemPrompt += `- **Show evidence**: Always call the 'selectEvidence' tool after answering to show which posts support your response\n`;
-    systemPrompt += `- **Be transparent**: If your answer is based on limited data, mention this\n`;
-    systemPrompt += `- **Stay humble**: When you don't know something, direct users to the real person\n\n`;
-
-    systemPrompt += `**Remember: Your credibility depends entirely on factual accuracy. Never guess or invent information.**`;
-
-    return systemPrompt;
+  private kvGetJson<T>(key: string): T | null {
+    const v = this.kvGet(key);
+    return v ? JSON.parse(v) : null;
   }
 
-  private parseSearchQuery(query: string): ParsedQuery {
-    const parsed: ParsedQuery = {
-      keywords: [],
-      operators: [],
+  private kvSetJson(key: string, value: any) {
+    this.kvSet(key, JSON.stringify(value));
+  }
+
+  // ── Registry methods (called only on __registry__ DO) ──
+
+  async registerUser(userId: string, username: string) {
+    this.sql.exec(
+      `INSERT INTO users (user_id, username, created_at) VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET username=?`,
+      userId,
+      username,
+      Date.now(),
+      username
+    );
+  }
+
+  async setSubscribed(userId: string, subscribed: number) {
+    this.sql.exec(
+      `UPDATE users SET subscribed=? WHERE user_id=?`,
+      subscribed,
+      userId
+    );
+  }
+
+  async getSubscribedUserIds(): Promise<string[]> {
+    return this.sql
+      .exec("SELECT user_id FROM users WHERE subscribed=1")
+      .toArray()
+      .map((r) => r.user_id as string);
+  }
+
+  // ── Per-user methods ──
+
+  async setXAuth(data: {
+    userId: string;
+    username: string;
+    name: string;
+    profileImageUrl: string;
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+  }) {
+    this.kvSetJson("x_user", {
+      userId: data.userId,
+      username: data.username,
+      name: data.name,
+      profileImageUrl: data.profileImageUrl
+    });
+    this.kvSet("x_access_token", data.accessToken);
+    this.kvSet("x_refresh_token", data.refreshToken);
+    this.kvSet("x_expires_at", String(data.expiresAt));
+
+    // Register in global registry
+    const registry = this.env.USER_DO.get(
+      this.env.USER_DO.idFromName("__registry__")
+    );
+    await registry.registerUser(data.userId, data.username);
+  }
+
+  async setGitHubInstall(data: {
+    installationId: number;
+    owner: string;
+    repo: string;
+    folder: string;
+  }) {
+    this.kvSetJson("gh_install", data);
+  }
+
+  async setFolder(folder: string) {
+    const install = this.kvGetJson<any>("gh_install");
+    if (install) {
+      install.folder = folder;
+      this.kvSetJson("gh_install", install);
+    }
+  }
+
+  async activateSubscription(stripeCustomerId: string, subscriptionId: string) {
+    this.kvSet("subscribed", "true");
+    this.kvSet("stripe_customer_id", stripeCustomerId);
+    this.kvSet("stripe_subscription_id", subscriptionId);
+  }
+
+  async deactivateSubscription() {
+    this.kvSet("subscribed", "false");
+  }
+
+  async getStatus(): Promise<UserStatus> {
+    const xUser = this.kvGetJson<any>("x_user");
+    const install = this.kvGetJson<any>("gh_install");
+    return {
+      xUser: xUser
+        ? {
+            username: xUser.username,
+            name: xUser.name,
+            profileImageUrl: xUser.profileImageUrl
+          }
+        : null,
+      githubConnected: !!install,
+      github: install,
+      subscribed: this.kvGet("subscribed") === "true",
+      lastPostsSyncAt: Number(this.kvGet("last_posts_sync_at")) || null,
+      lastBookmarksSyncAt: Number(this.kvGet("last_bookmarks_sync_at")) || null,
+      lastError: this.kvGet("last_error")
     };
-
-    if (!query) return parsed;
-
-    // Extract from: parameter
-    const fromMatch = query.match(/from:(\w+)/i);
-    if (fromMatch) {
-      parsed.from = fromMatch[1];
-      query = query.replace(/from:\w+/gi, "").trim();
-    }
-
-    // Extract before: parameter
-    const beforeMatch = query.match(/before:(\d{4}-\d{2}-\d{2})/i);
-    if (beforeMatch) {
-      parsed.before = new Date(beforeMatch[1]);
-      query = query.replace(/before:\d{4}-\d{2}-\d{2}/gi, "").trim();
-    }
-
-    // Extract after: parameter
-    const afterMatch = query.match(/after:(\d{4}-\d{2}-\d{2})/i);
-    if (afterMatch) {
-      parsed.after = new Date(afterMatch[1]);
-      query = query.replace(/after:\d{4}-\d{2}-\d{2}/gi, "").trim();
-    }
-
-    // Extract AND/OR operators and remaining keywords
-    const tokens = query.split(/\s+/).filter((token) => token.length > 0);
-
-    for (const token of tokens) {
-      if (token.toUpperCase() === "AND" || token.toUpperCase() === "OR") {
-        parsed.operators.push(token.toUpperCase() as "AND" | "OR");
-      } else if (token.length > 0) {
-        parsed.keywords.push(token.toLowerCase());
-      }
-    }
-
-    return parsed;
   }
 
-  private buildSearchSql(parsedQuery: ParsedQuery): {
-    sql: string;
-    params: any[];
-  } {
-    let sql = `SELECT DISTINCT conversation_id FROM posts WHERE 1=1`;
-    const params: any[] = [];
+  // ── X token refresh ──
 
-    // Add from filter
-    if (parsedQuery.from) {
-      sql += ` AND LOWER(author_username) = LOWER(?)`;
-      params.push(parsedQuery.from);
+  private async getValidXToken(): Promise<string | null> {
+    const expiresAt = Number(this.kvGet("x_expires_at") || 0);
+    if (Date.now() < expiresAt - 60_000) {
+      return this.kvGet("x_access_token");
     }
+    const refreshToken = this.kvGet("x_refresh_token");
+    if (!refreshToken) return null;
 
-    // Add date filters
-    if (parsedQuery.before) {
-      sql += ` AND date(created_at) < ?`;
-      params.push(parsedQuery.before.toISOString().split("T")[0]);
-    }
-
-    if (parsedQuery.after) {
-      sql += ` AND date(created_at) > ?`;
-      params.push(parsedQuery.after.toISOString().split("T")[0]);
-    }
-
-    // Add keyword filters
-    if (parsedQuery.keywords.length > 0) {
-      const keywordConditions: string[] = [];
-
-      for (const keyword of parsedQuery.keywords) {
-        keywordConditions.push(`LOWER(text) LIKE ?`);
-        params.push(`%${keyword}%`);
-      }
-
-      if (keywordConditions.length > 0) {
-        // Default to AND if no operators specified, otherwise use the operators
-        const operator =
-          parsedQuery.operators.length > 0
-            ? parsedQuery.operators[0] === "OR"
-              ? " OR "
-              : " AND "
-            : " AND ";
-
-        sql += ` AND (${keywordConditions.join(operator)})`;
-      }
-    }
-
-    return { sql, params };
-  }
-
-  private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 5);
-  }
-
-  async getInteractions(limit?: number): Promise<AuthorStats[]> {
-    const user = this.sql.exec<User>(`SELECT * FROM users`).toArray()[0];
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Get author stats with most recent post data for each author
-    const authorStatsResult = this.sql
-      .exec<{
-        author_username: string;
-        author_name: string;
-        post_count: number;
-        author_profile_image_url: string;
-        author_bio: string;
-        author_location: string;
-        author_url: string;
-        author_verified: number;
-        latest_post_date: string;
-      }>(
-        `
-    WITH author_post_counts AS (
-      SELECT 
-        author_username,
-        COUNT(*) as post_count
-      FROM posts 
-      GROUP BY author_username
-    ),
-    latest_author_posts AS (
-      SELECT DISTINCT
-        author_username,
-        FIRST_VALUE(author_name) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_name,
-        FIRST_VALUE(author_profile_image_url) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_profile_image_url,
-        FIRST_VALUE(author_bio) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_bio,
-        FIRST_VALUE(author_location) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_location,
-        FIRST_VALUE(author_url) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_url,
-        FIRST_VALUE(author_verified) OVER (PARTITION BY author_username ORDER BY created_at DESC) as author_verified,
-        FIRST_VALUE(created_at) OVER (PARTITION BY author_username ORDER BY created_at DESC) as latest_post_date
-      FROM posts
-    )
-    SELECT 
-      apc.author_username,
-      lap.author_name,
-      apc.post_count,
-      lap.author_profile_image_url,
-      lap.author_bio,
-      lap.author_location,
-      lap.author_url,
-      lap.author_verified,
-      lap.latest_post_date
-    FROM author_post_counts apc
-    JOIN latest_author_posts lap ON apc.author_username = lap.author_username
-    ORDER BY apc.post_count DESC
-  `,
-      )
-      .toArray();
-
-    const mapped = authorStatsResult
-      .map((row) => ({
-        username: row.author_username,
-        name: row.author_name || row.author_username,
-        postCount: row.post_count,
-        profileImageUrl: row.author_profile_image_url || "",
-        bio: row.author_bio || "",
-        location: row.author_location || "",
-        url: row.author_url || "",
-        isVerified: Boolean(row.author_verified),
-        latestPostDate: row.latest_post_date,
-      }))
-      .filter((row) => row.username !== user.username);
-
-    return limit ? mapped.slice(0, limit) : mapped;
-  }
-
-  private convertThreadToMarkdown(thread: ConversationThread): string {
-    const sortedPosts = thread.posts.sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    const res = await fetch("https://api.x.com/2/oauth2/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${btoa(
+          `${this.env.X_CLIENT_ID}:${this.env.X_CLIENT_SECRET}`
+        )}`
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: this.env.X_CLIENT_ID
+      })
+    });
+    if (!res.ok) return null;
+    const tokens = (await res.json()) as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    this.kvSet("x_access_token", tokens.access_token);
+    if (tokens.refresh_token)
+      this.kvSet("x_refresh_token", tokens.refresh_token);
+    this.kvSet(
+      "x_expires_at",
+      String(Date.now() + (tokens.expires_in || 7200) * 1000)
     );
-
-    let markdown = `# Thread\n\n`;
-
-    for (const post of sortedPosts) {
-      const date = new Date(post.created_at).toISOString().slice(0, 10);
-      const isReply = post.is_reply ? "\t↳" : "";
-
-      markdown += `${isReply}@${post.author_username} [${
-        post.tweet_id
-      }] (${date} ${post.like_count > 0 ? `❤️ ${post.like_count}` : ""}${
-        post.retweet_count > 0 ? ` 🔄 ${post.retweet_count}` : ""
-      }) - ${post.text.replaceAll("\n", "\t")}\n`;
-    }
-
-    return markdown + "\n\n";
+    return tokens.access_token;
   }
 
-  private addPaymentNoticeIfNeeded(
-    markdown: string,
-    user: User,
-    requestedUsername: string,
-  ): string {
-    if (!user.is_premium && user.username === requestedUsername) {
-      const paymentNotice = `
+  // ── Main sync entry ──
 
----
+  async runSync() {
+    try {
+      if (this.kvGet("subscribed") !== "true") return;
+      const install = this.kvGetJson<any>("gh_install");
+      if (!install) return;
 
-**💰 Upgrade to Premium** 
+      const xUser = this.kvGetJson<any>("x_user");
+      if (!xUser) return;
 
-You're currently on the free tier (${user.history_count}/${user.history_max_count} historic posts synced).
+      const accessToken = await this.getValidXToken();
+      if (!accessToken) throw new Error("Could not get valid X token");
 
-Upgrade to Premium for:
-- Up to 100,000 historic posts
-- Continued sync of future posts
-- Priority support
+      const ghToken = await getInstallationToken(
+        install.installationId,
+        this.env
+      );
 
-[Upgrade now →](https://clonechat.me/dashboard)
+      // Sync posts
+      const lastPostsSince = this.kvGet("last_posts_since_id") || undefined;
+      const newPostsSince = await this.syncPosts(
+        xUser.userId,
+        accessToken,
+        ghToken,
+        install,
+        lastPostsSince
+      );
+      if (newPostsSince) this.kvSet("last_posts_since_id", newPostsSince);
+      this.kvSet("last_posts_sync_at", String(Date.now()));
 
----
+      // Sync bookmarks
+      const lastBookmarksSince =
+        this.kvGet("last_bookmarks_since_id") || undefined;
+      const newBookmarksSince = await this.syncBookmarks(
+        xUser.userId,
+        accessToken,
+        ghToken,
+        install,
+        lastBookmarksSince
+      );
+      if (newBookmarksSince)
+        this.kvSet("last_bookmarks_since_id", newBookmarksSince);
+      this.kvSet("last_bookmarks_sync_at", String(Date.now()));
 
-`;
-      return markdown + paymentNotice;
+      this.kvSet("last_error", "");
+    } catch (e: any) {
+      this.kvSet("last_error", String(e?.message || e));
+      throw e;
     }
-    return markdown;
   }
 
-  async searchPosts(
-    username: string | undefined,
-    searchQuery: PostSearchQuery,
-  ): Promise<string> {
-    const user = this.sql.exec<User>(`SELECT * FROM users`).toArray()[0];
+  private async syncPosts(
+    userId: string,
+    xToken: string,
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    sinceId?: string
+  ): Promise<string | null> {
+    let newestId: string | undefined;
+    let nextToken: string | undefined;
 
-    if (!user) {
-      return `User not found`;
-    }
+    do {
+      const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/tweets`);
+      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set("tweet.fields", "created_at,public_metrics,referenced_tweets");
+      if (sinceId) fetchUrl.searchParams.set("since_id", sinceId);
+      if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
 
-    if (!user.is_public && username !== user.username) {
-      return `User did not make posts public`;
-    }
-
-    // Check if we should start a sync (frontfill)
-    if (username === user.username && this.shouldStartFrontfillSync(user)) {
-      console.log(`Starting frontfill sync for ${user.username}`);
-      this.ctx.waitUntil(this.performSync(user.id, user.username));
-    }
-
-    const maxTokens = searchQuery.maxTokens || 10000;
-    const parsedQuery = this.parseSearchQuery(searchQuery.q || "");
-
-    console.log("Parsed query:", parsedQuery);
-
-    // First, find matching conversation IDs
-    const { sql: searchSql, params: searchParams } =
-      this.buildSearchSql(parsedQuery);
-
-    console.log("Search SQL:", searchSql, "Params:", searchParams);
-
-    const conversationResults = this.sql
-      .exec<{ conversation_id: string }>(searchSql, ...searchParams)
-      .toArray();
-
-    if (conversationResults.length === 0) {
-      const markdown =
-        "# No posts found\n\nYour search didn't match any posts.";
-      return this.addPaymentNoticeIfNeeded(markdown, user, username);
-    }
-
-    // Get conversation IDs (limit to 100 - SQLite parameter limit)
-    const conversationIds = Array.from(
-      new Set(
-        conversationResults
-          .map((row) => row.conversation_id)
-          .filter((id) => id && id.trim() !== ""),
-      ),
-    ).slice(0, 100);
-
-    if (conversationIds.length === 0) {
-      const markdown =
-        "# No valid conversations found\n\nThe matching posts don't have valid conversation IDs.";
-      return this.addPaymentNoticeIfNeeded(markdown, user, username);
-    }
-
-    // Fetch all posts for these conversations using parameterized query
-    const placeholders = conversationIds.map(() => "?").join(",");
-    const allPostsResult = this.sql
-      .exec<Post>(
-        `SELECT * FROM posts WHERE conversation_id IN (${placeholders})`,
-        ...conversationIds,
-      )
-      .toArray();
-
-    console.log(`Found ${allPostsResult.length} total posts in conversations`);
-
-    // Group posts by conversation and create threads
-    const conversationMap = new Map<string, Post[]>();
-
-    for (const post of allPostsResult) {
-      const conversationId = post.conversation_id || "unknown";
-      if (!conversationMap.has(conversationId)) {
-        conversationMap.set(conversationId, []);
+      const res = await fetch(fetchUrl.toString(), {
+        headers: { Authorization: `Bearer ${xToken}` }
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`X posts fetch failed: ${res.status}`, body);
+        throw new Error(`X posts fetch failed: ${res.status} ${body}`);
       }
-      conversationMap.get(conversationId)!.push(post);
-    }
-
-    // Convert to threads with token estimation
-    const threads: ConversationThread[] = [];
-    let totalTokens = 0;
-
-    for (const [conversationId, posts] of conversationMap) {
-      if (posts.length === 0) continue;
-
-      const thread: ConversationThread = {
-        conversationId,
-        posts,
-        tokenCount: 0,
+      const data = (await res.json()) as {
+        data?: any[];
+        meta?: { newest_id?: string; next_token?: string };
       };
 
-      // Estimate tokens for this thread
-      const markdown = this.convertThreadToMarkdown(thread);
-      thread.tokenCount = this.estimateTokens(markdown);
+      if (!data.data?.length) break;
+      if (!newestId) newestId = data.meta?.newest_id;
 
-      // Check if adding this thread would exceed token limit
-      if (totalTokens + thread.tokenCount <= maxTokens) {
-        threads.push(thread);
-        totalTokens += thread.tokenCount;
-      } else {
-        console.log(
-          `Stopping at thread ${conversationId} to stay within token limit`,
-        );
-        break;
-      }
-    }
-
-    console.log(
-      `Selected ${threads.length} threads with ~${totalTokens} tokens`,
-    );
-
-    // Sort threads by most recent post in each thread
-    threads.sort((a, b) => {
-      const latestA = Math.max(
-        ...a.posts.map((p) => new Date(p.created_at).getTime()),
-      );
-      const latestB = Math.max(
-        ...b.posts.map((p) => new Date(p.created_at).getTime()),
-      );
-      return latestB - latestA;
-    });
-
-    // Convert threads to markdown
-    let finalMarkdown = `# Search Results\n\n`;
-    finalMarkdown += `Query: \`${searchQuery.q || "all posts"}\`\n\n`;
-    finalMarkdown += `Found ${threads.length} conversation threads (estimated ${totalTokens} tokens)\n\n`;
-    finalMarkdown += `---\n\n`;
-
-    for (const thread of threads) {
-      finalMarkdown += this.convertThreadToMarkdown(thread);
-    }
-
-    return this.addPaymentNoticeIfNeeded(finalMarkdown, user, username);
-  }
-
-  async ensureUserExists(u: string): Promise<User | null> {
-    const data = await fetch(
-      `https://profile.grok-tools.com/${u}?secret=mysecret`,
-    ).then((res) =>
-      res.json<{
-        id?: string;
-        userName?: string;
-        error?: string;
-        message?: string;
-      }>(),
-    );
-
-    const { id, userName, error, message } = data;
-    if (!id || !userName) {
-      console.error(`error ${error} ${message}`);
-      console.log({ data });
-      return null;
-    }
-    const username = userName.toLowerCase();
-
-    // Insert user if not exists
-    const existingUserResult = this.sql
-      .exec(`SELECT * FROM users WHERE id = ?`, id)
-      .toArray();
-
-    if (existingUserResult.length === 0) {
-      this.sql.exec(
-        `INSERT INTO users (id, username) VALUES (?, ?)`,
-        id,
-        username,
-      );
-    }
-
-    // Get current user state
-    const userResult = this.sql
-      .exec<User>(`SELECT * FROM users WHERE id = ?`, id)
-      .toArray();
-
-    const user = userResult[0];
-
-    // Start sync if pending and has balance
-    if (user.scrape_status === "pending" && user.balance > 0) {
-      console.log(`Starting initial sync for user ${username}`);
-      this.sql.exec(
-        `UPDATE users SET scrape_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        id,
-      );
-
-      // Start sync
-      this.ctx.waitUntil(this.performSync(id, username));
-    }
-
-    return user;
-  }
-
-  async startSync(username: string): Promise<void> {
-    const normalizedUsername = username.toLowerCase();
-    console.log(`Starting sync for user ${normalizedUsername}`);
-    const user = this.sql
-      .exec<User>(`SELECT * FROM users WHERE username = ?`, normalizedUsername)
-      .toArray()[0];
-
-    if (!user) {
-      console.log("Couldn't find user" + username);
-      return;
-    }
-
-    this.sql.exec(
-      `UPDATE users SET scrape_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
-      username,
-    );
-
-    await this.performSync(user.id, user.username);
-  }
-
-  private shouldStartFrontfillSync(user: User): boolean {
-    if (user.balance <= 0 || user.scrape_status === "in_progress") {
-      return false;
-    }
-
-    // If synced_from is null or more than 24 hours ago
-    if (!user.synced_from) {
-      return true;
-    }
-
-    const syncedFromDate = new Date(user.synced_from);
-    const now = new Date();
-    const hoursSinceSync =
-      (now.getTime() - syncedFromDate.getTime()) / (1000 * 60 * 60);
-
-    return hoursSinceSync > SYNC_OVERLAP_HOURS;
-  }
-
-  private async performSync(userId: string, username: string): Promise<void> {
-    try {
-      console.log(`Performing sync for user ${username} (${userId})`);
-
-      // Get current user state
-      const userResult = this.sql
-        .exec<User>(`SELECT * FROM users WHERE id = ?`, userId)
-        .toArray();
-
-      if (userResult.length === 0) {
-        console.error(`User ${userId} not found`);
-        return;
+      for (const tweet of data.data) {
+        const md = this.tweetToMarkdown(tweet);
+        await this.writeFile(ghToken, install, `posts/${tweet.id}.md`, md, `Add post ${tweet.id}`);
       }
 
-      const user = userResult[0];
+      nextToken = data.meta?.next_token;
+    } while (nextToken);
 
-      // Check if user has sufficient balance
-      if (user.balance <= 0) {
-        console.log(`User ${username} has no balance, stopping sync`);
-        this.sql.exec(
-          `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          userId,
-        );
-        return;
-      }
-
-      // Determine sync type and direction
-      const syncType = this.determineSyncType(user);
-      console.log(`Sync type for ${username}: ${syncType}`);
-
-      if (syncType === "historic") {
-        await this.performHistoricSync(user);
-      } else if (syncType === "frontfill") {
-        await this.performFrontfillSync(user);
-      } else {
-        console.log(`No sync needed for ${username}`);
-        this.sql.exec(
-          `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          userId,
-        );
-      }
-    } catch (error) {
-      console.error(`Sync failed for user ${username}:`, error);
-      this.sql.exec(
-        `UPDATE users SET scrape_status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        userId,
-      );
-    }
+    return newestId || null;
   }
 
-  private determineSyncType(user: User): "historic" | "frontfill" | "none" {
-    // If history is not completed and we haven't reached the limit, do historic sync
-    if (
-      !user.history_is_completed &&
-      user.history_count < user.history_max_count
-    ) {
-      return "historic";
-    }
-
-    // If synced_from is null or more than 24 hours ago, do frontfill
-    if (!user.synced_from) {
-      return "frontfill";
-    }
-
-    const syncedFromDate = new Date(user.synced_from);
-    const now = new Date();
-    const hoursSinceSync =
-      (now.getTime() - syncedFromDate.getTime()) / (1000 * 60 * 60);
-
-    if (hoursSinceSync > SYNC_OVERLAP_HOURS) {
-      return "frontfill";
-    }
-
-    return "none";
-  }
-
-  private async performHistoricSync(user: User): Promise<void> {
-    console.log(`Performing historic sync for ${user.username}`);
-
-    // Fetch posts going backwards from cursor
-    const postsResponse = await this.fetchUserPosts(
-      user.username,
-      user.history_cursor,
-    );
-
-    if (
-      postsResponse.msg !== "success" ||
-      !postsResponse.data?.tweets?.length
-    ) {
-      console.log(
-        `No more historic posts found for ${user.username} (history_is_completed=1)`,
-      );
-      // Get the oldest post date to set as synced_from
-      const oldestPost = this.sql
-        .exec<Post>(
-          `SELECT created_at FROM posts WHERE author_username=? ORDER BY created_at ASC LIMIT 1`,
-          user.username,
-        )
-        .toArray()[0];
-      const syncedFrom = oldestPost?.created_at || new Date().toISOString();
-
-      // Mark history as completed
-      this.sql.exec(
-        `UPDATE users SET
-          history_is_completed = 1,
-          history_cursor = NULL,
-          synced_from = ?,
-          scrape_status = 'completed',
-          updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-        syncedFrom,
-        user.id,
-      );
-      return;
-    }
-
-    const tweets = postsResponse.data.tweets;
-    console.log(`Found ${tweets.length} historic tweets for ${user.username}`);
-
-    // Process tweets and count historic posts
-    let historicPostsAdded = 0;
-    const tweetProcessingPromises = tweets.map(async (tweet) => {
-      let postsProcessed = 0;
-
-      try {
-        // Store the main tweet as historic
-        await this.storePost(user.id, tweet, true);
-        postsProcessed++;
-
-        // Get thread context for this tweet
-        try {
-          const threadResponse = await this.fetchThreadContext(tweet.id);
-
-          if (
-            threadResponse.status === "success" &&
-            threadResponse.tweets?.length
-          ) {
-            await Promise.all(
-              threadResponse.tweets.map(async (reply) => {
-                await this.storePost(user.id, reply, true);
-                return 1;
-              }),
-            );
-            postsProcessed += threadResponse.tweets.length;
-          }
-        } catch (error) {
-          console.error(`Failed to fetch thread for tweet ${tweet.id}:`, error);
-        }
-
-        return postsProcessed;
-      } catch (error) {
-        console.error(`Failed to process tweet ${tweet.id}:`, error);
-        return 0;
-      }
-    });
-
-    const processingResults = await Promise.all(tweetProcessingPromises);
-    const totalPostsProcessed = processingResults.reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-
-    // Calculate cost and deduct from balance
-    const cost = Math.ceil(totalPostsProcessed * SYNC_COST_PER_POST * 100);
-    const newBalance = Math.max(0, user.balance - cost);
-    const newHistoryCount = user.history_count + totalPostsProcessed;
-
-    console.log(
-      `Historic sync: processed ${totalPostsProcessed} posts, cost: $${
-        cost / 100
-      }, new count: ${newHistoryCount}/${user.history_max_count}`,
-    );
-
-    // Update user record
-    const oldestTweet = tweets[tweets.length - 1];
-
-    this.sql.exec(
-      `UPDATE users SET 
-        balance = ?, 
-        history_count = ?,
-        history_cursor = ?,
-        updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      newBalance,
-      newHistoryCount,
-      postsResponse.next_cursor || oldestTweet.id,
-      user.id,
-    );
-
-    // Check if we should continue historic sync
-    const shouldContinue =
-      newBalance > 0 &&
-      newHistoryCount < user.history_max_count &&
-      postsResponse.has_next_page;
-
-    if (shouldContinue) {
-      console.log(`Scheduling next historic sync for ${user.username}`);
-      await this.ctx.storage.setAlarm(Date.now() + 1000);
-    } else {
-      console.log(
-        `Historic sync completed (stopped, not done) for ${user.username}`,
-      );
-      this.sql.exec(
-        `UPDATE users SET 
-          scrape_status = 'completed',
-          updated_at = CURRENT_TIMESTAMP 
-         WHERE id = ?`,
-        user.id,
-      );
-    }
-  }
-
-  private async performFrontfillSync(user: User): Promise<void> {
-    console.log(`Performing frontfill sync for ${user.username}`);
-
-    // Set synced_until to current time if not set
-    if (!user.synced_until) {
-      const now = new Date().toISOString();
-      this.sql.exec(
-        `UPDATE users SET synced_until = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        now,
-        user.id,
-      );
-      user.synced_until = now;
-    }
-
-    // Fetch recent posts (no cursor = get latest)
-    const postsResponse = await this.fetchUserPosts(
-      user.username,
-      user.synced_from_cursor,
-    );
-
-    if (
-      postsResponse.msg !== "success" ||
-      !postsResponse.data?.tweets?.length
-    ) {
-      console.log(`No new posts found for frontfill sync for ${user.username}`);
-      this.sql.exec(
-        `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        user.id,
-      );
-      return;
-    }
-
-    const tweets = postsResponse.data.tweets;
-    console.log(`Found ${tweets.length} frontfill tweets for ${user.username}`);
-
-    // Process tweets as non-historic
-    const tweetProcessingPromises = tweets.map(async (tweet) => {
-      let postsProcessed = 0;
-
-      try {
-        await this.storePost(user.id, tweet, false);
-        postsProcessed++;
-
-        try {
-          const threadResponse = await this.fetchThreadContext(tweet.id);
-
-          if (
-            threadResponse.status === "success" &&
-            threadResponse.tweets?.length
-          ) {
-            await Promise.all(
-              threadResponse.tweets.map(async (reply) => {
-                await this.storePost(user.id, reply, false);
-                return 1;
-              }),
-            );
-            postsProcessed += threadResponse.tweets.length;
-          }
-        } catch (error) {
-          console.error(`Failed to fetch thread for tweet ${tweet.id}:`, error);
-        }
-
-        return postsProcessed;
-      } catch (error) {
-        console.error(`Failed to process tweet ${tweet.id}:`, error);
-        return 0;
-      }
-    });
-
-    const processingResults = await Promise.all(tweetProcessingPromises);
-    const totalPostsProcessed = processingResults.reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-
-    // Calculate cost and deduct from balance
-    const cost = Math.ceil(totalPostsProcessed * SYNC_COST_PER_POST * 100);
-    const newBalance = Math.max(0, user.balance - cost);
-
-    console.log(
-      `Frontfill sync: processed ${totalPostsProcessed} posts, cost: $${
-        cost / 100
-      }`,
-    );
-
-    // Update synced_from to the newest tweet's date
-    const newestTweet = tweets[0];
-    const oldestTweet = tweets[tweets.length - 1];
-
-    // Check if we've reached the overlap point
-    const syncedUntilDate = new Date(user.synced_until);
-    const overlapDate = new Date(
-      syncedUntilDate.getTime() - SYNC_OVERLAP_HOURS * 60 * 60 * 1000,
-    );
-    const oldestTweetDate = new Date(oldestTweet.createdAt);
-
-    if (oldestTweetDate <= overlapDate) {
-      // We've reached the overlap, update synced_from to synced_until
-      this.sql.exec(
-        `UPDATE users SET 
-          balance = ?,
-          synced_from = synced_until,
-          synced_from_cursor = NULL,
-          scrape_status = 'completed',
-          updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-        newBalance,
-        user.id,
-      );
-      console.log(
-        `Frontfill sync completed (reached overlap) for ${user.username}`,
-      );
-    } else {
-      // Continue frontfill sync
-      this.sql.exec(
-        `UPDATE users SET 
-          balance = ?,
-          synced_from_cursor = ?,
-          updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-        newBalance,
-        postsResponse.next_cursor || oldestTweet.id,
-        user.id,
-      );
-
-      // Check if we should continue
-      if (newBalance > 0 && postsResponse.has_next_page) {
-        console.log(`Scheduling next frontfill sync for ${user.username}`);
-        await this.ctx.storage.setAlarm(Date.now() + 1000);
-      } else {
-        console.log(
-          `Frontfill sync completed (no balance/pages) for ${user.username}`,
-        );
-        this.sql.exec(
-          `UPDATE users SET scrape_status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          user.id,
-        );
-      }
-    }
-  }
-
-  private async fetchUserPosts(
-    username: string,
-    cursor?: string | null,
-  ): Promise<TwitterAPIResponse> {
-    let url = `https://api.twitterapi.io/twitter/user/last_tweets?userName=${username}&includeReplies=true`;
-
-    if (cursor) {
-      url += `&cursor=${cursor}`;
-    }
-
-    console.log(`Fetching user posts from: ${url}`);
-
-    const response = await fetch(url, {
-      headers: {
-        "X-API-Key": this.env.TWITTERAPI_SECRET,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `Failed to fetch posts: ${response.status} ${response.statusText}`,
-        errorText,
-      );
-      throw new Error(
-        `Failed to fetch posts: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = (await response.json()) as TwitterAPIResponse;
-    return data;
-  }
-
-  private async fetchThreadContext(
-    tweetId: string,
-    cursor?: string,
-  ): Promise<ThreadContextResponse> {
-    const baseUrl = `https://api.twitterapi.io/twitter/tweet/thread_context?tweetId=${tweetId}`;
-    const url = cursor ? `${baseUrl}&cursor=${cursor}` : baseUrl;
-
-    const response = await fetch(url, {
-      headers: {
-        "X-API-Key": this.env.TWITTERAPI_SECRET,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `Failed to fetch thread: ${response.status} ${response.statusText}`,
-        errorText,
-      );
-      throw new Error(
-        `Failed to fetch thread: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = (await response.json()) as ThreadContextResponse;
-
-    // If there are more pages, recursively fetch them
-    if (data.has_next_page && data.next_cursor) {
-      try {
-        const nextPageData = await this.fetchThreadContext(
-          tweetId,
-          data.next_cursor,
-        );
-
-        return {
-          ...data,
-          tweets: [...(data.tweets || []), ...(nextPageData.tweets || [])],
-          has_next_page: nextPageData.has_next_page,
-          next_cursor: nextPageData.next_cursor,
-        };
-      } catch (error) {
-        console.error(
-          `Failed to fetch next page for thread ${tweetId}:`,
-          error,
-        );
-        return data;
-      }
-    }
-
-    return data;
-  }
-
-  private formatTweetText(tweet: Tweet): string {
-    let tweetText = tweet.text || "";
-
-    // Expand URLs in the tweet text
-    if (tweet.entities?.urls && tweet.entities.urls.length > 0) {
-      for (const urlEntity of tweet.entities.urls) {
-        tweetText = tweetText.replace(urlEntity.url, urlEntity.expanded_url);
-      }
-    }
-
-    // Remove media URLs from text to avoid duplication since we'll store them separately
-    if (
-      tweet.extendedEntities?.media &&
-      tweet.extendedEntities.media.length > 0
-    ) {
-      for (const media of tweet.extendedEntities.media) {
-        tweetText = tweetText.replace(media.url, "");
-      }
-    }
-
-    return tweetText.trim();
-  }
-
-  private extractMediaUrls(tweet: Tweet): string {
-    const mediaItems: string[] = [];
-
-    if (
-      tweet.extendedEntities?.media &&
-      tweet.extendedEntities.media.length > 0
-    ) {
-      const uniqueMedia = new Set(
-        tweet.extendedEntities.media
-          .map((media) => {
-            // For photos, just include the URL
-            if (media.type === "photo") {
-              return `[Image: ${media.media_url_https}]`;
-            }
-            // For videos and GIFs, include both the thumbnail and video URL if available
-            else if (media.type === "video" || media.type === "animated_gif") {
-              const videoUrl = media.video_info?.variants?.[0]?.url || "";
-              if (videoUrl) {
-                return `[Video: ${videoUrl}]`;
-              } else {
-                return `[Video: ${media.media_url_https}]`;
-              }
-            }
-            return "";
-          })
-          .filter((item) => item.length > 0),
-      );
-
-      mediaItems.push(...Array.from(uniqueMedia));
-    }
-
-    return mediaItems.join("\n");
-  }
-
-  private formatAuthorBio(author: UserInfo): string {
-    let bio = author.description || "";
-
-    // Expand URLs in bio
-    if (
-      author.entities?.description?.urls &&
-      author.entities.description.urls.length > 0
-    ) {
-      for (const urlEntity of author.entities.description.urls) {
-        bio = bio.replace(urlEntity.url, urlEntity.expanded_url);
-      }
-    }
-
-    return bio;
-  }
-
-  private getAuthorUrl(author: UserInfo): string {
-    // Check if there's a URL in the author's entities
-    if (author.entities?.url?.urls && author.entities.url.urls.length > 0) {
-      return author.entities.url.urls[0].expanded_url;
-    }
-    return "";
-  }
-
-  private getProfileImageUrl(profilePicture: string): string {
-    // Replace _normal with _400x400 for higher resolution
-    return profilePicture.replace(/_normal\./, "_400x400.");
-  }
-
-  private async storePost(
+  private async syncBookmarks(
     userId: string,
-    tweet: Tweet,
-    isHistoric: boolean = false,
-  ): Promise<void> {
-    try {
-      const formattedText = this.formatTweetText(tweet);
-      const mediaUrls = this.extractMediaUrls(tweet);
-      const fullTextWithMedia = mediaUrls
-        ? `${formattedText}\n${mediaUrls}`
-        : formattedText;
+    xToken: string,
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    sinceId?: string
+  ): Promise<string | null> {
+    const PAGE_SIZES = [1, 2, 5, 10, 20, 50, 100];
+    const collected: any[] = [];
+    const authorMap: Record<string, string> = {};
+    let nextToken: string | undefined;
+    let newestId: string | undefined;
 
-      const authorBio = this.formatAuthorBio(tweet.author);
-      const authorUrl = this.getAuthorUrl(tweet.author);
-      const authorProfileImage = tweet.author.profilePicture
-        ? this.getProfileImageUrl(tweet.author.profilePicture)
-        : "";
+    for (const pageSize of PAGE_SIZES) {
+      const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/bookmarks`);
+      fetchUrl.searchParams.set("max_results", String(pageSize));
+      fetchUrl.searchParams.set("tweet.fields", "created_at,author_id,public_metrics");
+      fetchUrl.searchParams.set("expansions", "author_id");
+      fetchUrl.searchParams.set("user.fields", "username");
+      if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
 
-      this.sql.exec(
-        `INSERT OR REPLACE INTO posts (
-        user_id, tweet_id, text, author_username, author_name,
-        created_at, like_count, retweet_count, reply_count,
-        is_reply, conversation_id, raw_data,
-        author_profile_image_url, author_bio, author_location,
-        author_url, author_verified, bookmark_count, view_count, is_historic
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        userId,
-        tweet.id,
-        fullTextWithMedia,
-        tweet.author?.userName || "",
-        tweet.author?.name || "",
-        tweet.createdAt ? new Date(tweet.createdAt).toISOString() : "",
-        tweet.likeCount || 0,
-        tweet.retweetCount || 0,
-        tweet.replyCount || 0,
-        tweet.isReply ? 1 : 0,
-        tweet.conversationId || "",
-        JSON.stringify(tweet),
-        authorProfileImage,
-        authorBio,
-        tweet.author?.location || "",
-        authorUrl,
-        tweet.author?.isBlueVerified ? 1 : 0,
-        tweet.bookmarkCount || 0,
-        tweet.viewCount || 0,
-        isHistoric ? 1 : 0,
-      );
-    } catch (error) {
-      console.error(`Failed to store post ${tweet.id}:`, error);
+      const res = await fetch(fetchUrl.toString(), {
+        headers: { Authorization: `Bearer ${xToken}` }
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`X bookmarks fetch failed: ${res.status}`, body);
+        throw new Error(`X bookmarks fetch failed: ${res.status} ${body}`);
+      }
+      const data = (await res.json()) as {
+        data?: any[];
+        includes?: { users?: { id: string; username: string }[] };
+        meta?: { next_token?: string; newest_id?: string };
+      };
+
+      if (!data.data?.length) break;
+
+      for (const u of data.includes?.users || []) {
+        authorMap[u.id] = u.username;
+      }
+      if (!newestId) newestId = data.meta?.newest_id || data.data[0]?.id;
+
+      let done = false;
+      for (const tweet of data.data) {
+        if (sinceId && tweet.id === sinceId) { done = true; break; }
+        collected.push(tweet);
+      }
+      if (done || !data.meta?.next_token) break;
+      nextToken = data.meta.next_token;
     }
+
+    for (const tweet of collected) {
+      const md = this.tweetToMarkdown(tweet, authorMap[tweet.author_id]);
+      await this.writeFile(ghToken, install, `bookmarks/${tweet.id}.md`, md, `Add bookmark ${tweet.id}`);
+    }
+    return newestId || null;
   }
 
-  async getUserStats(): Promise<UserStats | null> {
-    // can only be the owner of this DO
-    const user = this.sql
-      .exec<User>(`SELECT * FROM users LIMIT 0,1`)
-      .toArray()[0];
-    if (!user) {
-      return null;
+  private tweetToMarkdown(tweet: any, authorUsername?: string): string {
+    const front = [
+      "---",
+      `id: "${tweet.id}"`,
+      `created_at: "${tweet.created_at || ""}"`,
+      authorUsername ? `author: "${authorUsername}"` : "",
+      tweet.public_metrics
+        ? `likes: ${tweet.public_metrics.like_count || 0}`
+        : "",
+      tweet.public_metrics
+        ? `retweets: ${tweet.public_metrics.retweet_count || 0}`
+        : "",
+      `url: "https://x.com/i/status/${tweet.id}"`,
+      "---",
+      ""
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return front + "\n" + (tweet.text || "") + "\n";
+  }
+
+  private async writeFile(
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    relativePath: string,
+    content: string,
+    message: string
+  ) {
+    const folder = install.folder
+      ? install.folder.replace(/^\/+|\/+$/g, "")
+      : "";
+    const fullPath = folder ? `${folder}/${relativePath}` : relativePath;
+    const apiUrl = `https://api.github.com/repos/${install.owner}/${install.repo}/contents/${encodeURIComponent(
+      fullPath
+    ).replace(/%2F/g, "/")}`;
+
+    // Check if file exists to get SHA (needed for updates, but we skip if it does)
+    const existing = await fetch(apiUrl, {
+      headers: {
+        Authorization: `Bearer ${ghToken}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "x-archive-sync"
+      }
+    });
+    if (existing.status === 200) {
+      // Already exists — skip (idempotent)
+      return;
     }
 
-    // last post
-    const lastPost: Post | null = this.sql
-      .exec<Post>(
-        `SELECT * FROM posts WHERE author_username=? ORDER BY created_at DESC LIMIT 0,1`,
-        user.username,
-      )
-      .toArray()[0];
-
-    const postCountResult = this.sql
-      .exec(`SELECT COUNT(*) as count FROM posts`)
-      .toArray()[0] as { count: number };
-
-    return {
-      postCount: postCountResult.count,
-      id: user.id,
-      name: lastPost?.author_name,
-      username: user.username,
-      profileImageUrl: lastPost?.author_profile_image_url,
-      bio: lastPost?.author_bio,
-      location: lastPost?.author_location,
-      url: lastPost?.author_url,
-      verified: Boolean(lastPost?.author_verified),
-
-      balance: user.balance,
-      isPremium: Boolean(user.is_premium),
-      isPublic: Boolean(user.is_public),
-      isFeatured: Boolean(user.is_featured),
-      scrapeStatus: user.scrape_status as
-        | "pending"
-        | "in_progress"
-        | "completed"
-        | "failed",
-      historyMaxCount: user.history_max_count,
-      historyCount: user.history_count,
-      historyIsCompleted: Boolean(user.history_is_completed),
-      syncedFrom: user.synced_from,
-      syncedUntil: user.synced_until,
-    };
+    const encoded = btoa(unescape(encodeURIComponent(content)));
+    const res = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${ghToken}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "x-archive-sync"
+      },
+      body: JSON.stringify({ message, content: encoded })
+    });
+    if (!res.ok && res.status !== 422) {
+      // 422 = already exists race condition, safe to ignore
+      throw new Error(`GitHub write failed: ${res.status} ${await res.text()}`);
+    }
   }
 }
-
-async function handleStripeWebhook(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  if (!request.body) {
-    return new Response(JSON.stringify({ error: "No body" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const rawBody = await streamToBuffer(request.body);
-  const rawBodyString = new TextDecoder().decode(rawBody);
-
-  const stripe = new Stripe(env.STRIPE_SECRET, {
-    apiVersion: "2025-09-30.clover",
-  });
-
-  const stripeSignature = request.headers.get("stripe-signature");
-  if (!stripeSignature) {
-    return new Response(JSON.stringify({ error: "No signature" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  let event: Stripe.Event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(
-      rawBodyString,
-      stripeSignature,
-      env.STRIPE_WEBHOOK_SIGNING_SECRET,
-    );
-  } catch (err) {
-    console.log("WEBHOOK ERR", err.message);
-    return new Response(`Webhook error: ${String(err)}`, { status: 400 });
-  }
-
-  if (event.type === "checkout.session.completed") {
-    console.log("CHECKOUT COMPLETED");
-    const session = event.data.object;
-
-    if (session.payment_status !== "paid" || !session.amount_total) {
-      return new Response("Payment not completed", { status: 400 });
-    }
-
-    const {
-      client_reference_id: username,
-      amount_total,
-      payment_link,
-    } = session;
-
-    if (payment_link !== PAYMENT_LINK_ID) {
-      return new Response("Invalid payment link", { status: 400 });
-    }
-
-    if (!username) {
-      return new Response("Missing username", { status: 400 });
-    }
-
-    const userDO = env.USER_DO.get(
-      env.USER_DO.idFromName(DO_NAME_PREFIX + username.toLowerCase()),
-    );
-
-    // Update balance, premium status, and history limits
-    await userDO.exec(
-      `UPDATE users SET 
-        is_premium = 1, 
-        balance = balance + ?, 
-        history_max_count = ?
-       WHERE username = ?`,
-      amount_total,
-      PREMIUM_MAX_HISTORIC_POSTS,
-      username,
-    );
-
-    // Start sync after payment
-    await userDO.startSync(username);
-
-    return new Response("Payment processed successfully", { status: 200 });
-  }
-
-  return new Response("Event not handled", { status: 200 });
-}
-
-const dashboardPage = (
-  user: UserContext["user"],
-  stats: UserStats,
-  accessToken: string,
-  isAdmin: boolean,
-) => `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - grokthyself</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
-
-        .serif { font-family: 'Cormorant Garamond', serif; }
-        .mono { font-family: 'Space Mono', monospace; }
-
-        @keyframes subtle-pulse {
-            0%, 100% { opacity: 0.8; }
-            50% { opacity: 1; }
-        }
-
-        @keyframes grid-move {
-            0% { background-position: 0 0; }
-            100% { background-position: 50px 50px; }
-        }
-
-        .cyber-grid {
-            background-image:
-                linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            animation: grid-move 30s linear infinite;
-        }
-
-        .border-glow {
-            box-shadow: 0 0 15px rgba(148, 163, 184, 0.2), inset 0 0 10px rgba(148, 163, 184, 0.1);
-        }
-
-        .pillar-cap {
-            border-top: 3px solid rgba(148, 163, 184, 0.3);
-            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-            height: 4px;
-            margin-bottom: 8px;
-        }
-
-        .scroll-ornament {
-            background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.2) 50%, transparent 100%);
-            height: 1px;
-            position: relative;
-        }
-
-        .scroll-ornament::before, .scroll-ornament::after {
-            content: '◆';
-            position: absolute;
-            color: rgba(148, 163, 184, 0.4);
-            font-size: 12px;
-            top: -6px;
-        }
-
-        .scroll-ornament::before { left: 0; }
-        .scroll-ornament::after { right: 0; }
-
-        .status-pulse {
-            animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-
-        .progress-bar {
-            background: linear-gradient(90deg, #60a5fa, #3b82f6, #60a5fa);
-            background-size: 200% 100%;
-            animation: shimmer 2s ease-in-out infinite;
-        }
-
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
-
-        .progress-container {
-            background: rgba(96, 165, 250, 0.2);
-            border-radius: 9999px;
-            overflow: hidden;
-        }
-
-        .code-block {
-            background: rgba(0, 0, 0, 0.8);
-            color: #10b981;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.7rem;
-            overflow-x: auto;
-            white-space: pre;
-        }
-
-        .copy-btn:active { transform: scale(0.95); }
-    </style>
-</head>
-<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-300 min-h-screen">
-    <!-- Cyber Grid Background -->
-    <div class="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
-
-    <main class="relative z-10 min-h-screen px-4 py-8">
-        <div class="max-w-4xl mx-auto">
-            <!-- Header -->
-            <header class="flex items-center justify-between mb-10">
-                <div class="flex items-center gap-4">
-                    <a href="/" class="text-3xl font-bold serif text-slate-200">grokthyself</a>
-                </div>
-                <div class="flex items-center gap-6 mono text-sm">
-                    <a href="/logout" class="text-slate-500 hover:text-slate-300 transition-colors">Logout</a>
-                </div>
-            </header>
-
-            <!-- Ornamental Divider -->
-            <div class="flex items-center justify-center gap-4 mb-10">
-                <div class="scroll-ornament w-24"></div>
-                <span class="text-slate-600 text-lg">◆</span>
-                <div class="scroll-ornament w-24"></div>
-            </div>
-
-            <!-- Profile Card -->
-            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
-                <div class="pillar-cap"></div>
-                <div class="flex items-start gap-6">
-                    ${
-                      user?.profile_image_url
-                        ? `<img src="${user.profile_image_url}" alt="Profile" class="w-20 h-20 rounded-full border-2 border-slate-600 flex-shrink-0">`
-                        : `<div class="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center flex-shrink-0">
-                            <span class="text-slate-400 text-2xl font-bold serif">${user?.name?.charAt(0)?.toUpperCase() || "?"}</span>
-                        </div>`
-                    }
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-3 mb-2">
-                            <h2 class="text-2xl font-bold serif text-slate-200">${user?.name || "User"}</h2>
-                            ${stats?.isPremium ? '<span class="bg-blue-500/20 text-blue-400 px-3 py-1 text-sm mono border border-blue-500/30">PREMIUM</span>' : ""}
-                        </div>
-                        <p class="text-slate-500 mono mb-4">@${user?.username || "unknown"}</p>
-
-                        ${
-                          stats?.isPremium
-                            ? `
-                        <div class="grid grid-cols-3 gap-6 mt-6">
-                            <div class="text-center">
-                                <div class="text-3xl font-bold serif text-slate-200">${stats.postCount?.toLocaleString() || 0}</div>
-                                <div class="text-xs text-slate-500 mono tracking-wider">POSTS</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-3xl font-bold serif ${stats.scrapeStatus === "in_progress" ? "status-pulse text-blue-400" : "text-slate-200"}">
-                                    ${stats.historyIsCompleted && stats.syncedFrom ? "✓" : stats.scrapeStatus === "in_progress" ? "⟳" : stats.scrapeStatus === "failed" ? "✗" : "○"}
-                                </div>
-                                <div class="text-xs text-slate-500 mono tracking-wider">STATUS</div>
-                            </div>
-                            ${
-                              stats.historyIsCompleted
-                                ? ``
-                                : `<div class="text-center">
-                                <div class="text-3xl font-bold serif text-slate-200">${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%</div>
-                                <div class="text-xs text-slate-500 mono tracking-wider">COMPLETE</div>
-                            </div>`
-                            }
-                        </div>
-                        `
-                            : ""
-                        }
-                    </div>
-                </div>
-
-                ${
-                  stats?.isPremium && stats.scrapeStatus === "in_progress"
-                    ? `
-                <div class="mt-8">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm text-blue-400 mono">Analyzing your posts...</span>
-                        <span class="text-sm text-slate-500 mono">${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%</span>
-                    </div>
-                    <div class="progress-container h-1">
-                        <div class="progress-bar h-full" style="width: ${Math.round((stats.historyCount / stats.historyMaxCount) * 100)}%"></div>
-                    </div>
-                    <div class="text-xs text-slate-600 mt-2 mono">
-                        ${stats.historyCount?.toLocaleString() || 0} / ${stats.historyMaxCount?.toLocaleString() || 0} posts processed
-                    </div>
-                </div>
-                `
-                    : ""
-                }
-
-                ${
-                  stats?.isPremium
-                    ? `
-                <div class="mt-6 p-4 bg-slate-800/50 border border-slate-700/50">
-                    <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 ${stats.historyIsCompleted && stats.syncedFrom ? "bg-green-500/20 border-green-500/50" : stats.scrapeStatus === "in_progress" ? "bg-blue-500/20 border-blue-500/50" : "bg-slate-700"} border rounded-full flex items-center justify-center">
-                            <span class="text-xs">${stats.historyIsCompleted && stats.syncedFrom ? "✓" : stats.scrapeStatus === "in_progress" ? "◎" : "○"}</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-200 serif">
-                                ${stats.syncedFrom && stats.historyIsCompleted ? "Your neural context is ready" : stats.scrapeStatus === "in_progress" ? "Building your neural context..." : stats.scrapeStatus === "failed" ? "Context creation failed" : "Awaiting initialization"}
-                            </span>
-                            <p class="text-sm text-slate-500 mt-1">
-                                ${stats.syncedFrom && stats.historyIsCompleted ? "Your clone is live and ready for conversations" : stats.scrapeStatus === "in_progress" ? "We're analyzing your posts to create an accurate AI representation." : stats.scrapeStatus === "failed" ? "Something went wrong. Please refresh the page to retry." : "Your premium clone will be created shortly."}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                `
-                    : ""
-                }
-            </div>
-
-            ${
-              !stats?.isPremium
-                ? `
-            <!-- Purchase Card -->
-            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8 border-glow">
-                <div class="pillar-cap"></div>
-                <div class="mono text-xs text-slate-500 tracking-widest mb-2">UNLOCK YOUR POTENTIAL</div>
-                <h3 class="text-3xl font-bold serif text-slate-200 mb-6">Create Your Neural Context</h3>
-
-                <p class="text-slate-400 serif text-lg mb-6">
-                    Transform your 𝕏 presence into <span class="text-blue-400">portable knowledge</span> that AI agents can discover and use.
-                </p>
-
-                <div class="space-y-3 mb-8">
-                    <div class="flex items-center gap-3 text-slate-300">
-                        <span class="text-blue-400">◆</span>
-                        <span class="serif">Up to 100,000 historic posts analyzed</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-slate-300">
-                        <span class="text-blue-400">◆</span>
-                        <span class="serif">Powered by advanced Grok AI</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-slate-300">
-                        <span class="text-blue-400">◆</span>
-                        <span class="serif">Real-time post synchronization</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-slate-300">
-                        <span class="text-blue-400">◆</span>
-                        <span class="serif">Custom shareable link for your bio</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-slate-300">
-                        <span class="text-blue-400">◆</span>
-                        <span class="serif">Lifetime access - no subscriptions</span>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-4 mb-6">
-                    <div class="text-4xl font-bold serif text-slate-200">$29</div>
-                    <div>
-                        <span class="line-through text-slate-600 text-lg">$129</span>
-                        <span class="bg-blue-500/20 text-blue-400 px-2 py-1 text-sm mono ml-2 border border-blue-500/30">77% OFF</span>
-                    </div>
-                </div>
-                <p class="text-sm text-slate-500 mb-6 mono">Early adopter pricing - limited time</p>
-
-                <a href="${PAYMENT_LINK_URL}?client_reference_id=${user?.username}"
-                   class="inline-flex items-center gap-4 bg-slate-800 border border-slate-600 text-slate-200 px-8 py-4 text-lg font-semibold hover:bg-slate-700 hover:border-slate-400 transition-all duration-300 border-glow mono">
-                    <span>Begin Transformation</span>
-                    <span class="text-blue-400">→</span>
-                </a>
-            </div>
-            `
-                : ""
-            }
-
-            ${
-              stats?.isPremium
-                ? `
-            <!-- Clone Settings Card -->
-            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
-                <div class="pillar-cap"></div>
-                <div class="mono text-xs text-slate-500 tracking-widest mb-2">CONFIGURATION</div>
-                <h3 class="text-xl font-bold serif text-slate-200 mb-6">Settings</h3>
-
-                <label class="flex items-start gap-4 cursor-pointer p-4 bg-slate-800/30 border border-slate-700/30 hover:border-slate-600 transition-colors">
-                    <input type="checkbox" id="public-check" ${stats.isPublic ? "checked" : ""}
-                        class="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500/50">
-                    <div class="flex-1">
-                        <span class="text-slate-200 serif block">MCP is public</span>
-                        <span class="text-sm text-slate-500">When disabled, only you can interact with your MCP</span>
-                    </div>
-                </label>
-            </div>
-            `
-                : ""
-            }
-
-            ${
-              stats?.isPremium
-                ? `
-            <!-- MCP Access Card -->
-            <div class="bg-slate-900/50 border border-slate-700/50 p-8 backdrop-blur-sm mb-8">
-                <div class="pillar-cap"></div>
-                <div class="mono text-xs text-slate-500 tracking-widest mb-2">YOUR MCP</div>
-                <h3 class="text-xl font-bold serif text-slate-200 mb-6">
-                    ${stats.historyIsCompleted ? "MCP Ready" : "Clone Initializing..."}
-                </h3>
-
-                <!-- MCP URL -->
-                <div class="bg-slate-800/50 border border-slate-600 p-4 mb-4">
-                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">MCP Endpoint:</label>
-                    <div class="flex items-center gap-3">
-                        <code class="flex-1 mono text-blue-400 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm break-all" id="mcp-url">https://grokthyself.com/${user?.username}/mcp</code>
-                        <button onclick="copyToClipboard('mcp-url')" class="copy-btn bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 mono text-xs transition-colors border border-slate-600">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Install Button -->
-                <div class="text-center mb-6">
-                    <a href="https://installthismcp.com/${encodeURIComponent((user?.username || "") + "'s MCP")}?url=${encodeURIComponent("https://grokthyself.com/" + (user?.username || "") + "/mcp")}" target="_blank">
-                        <img src="https://img.shields.io/badge/Install_MCP-${encodeURIComponent(user?.username || "")}'s%20MCP-1e3a8a?style=for-the-badge" alt="Install MCP" class="mx-auto">
-                    </a>
-                </div>
-
-                <!-- API Key -->
-                <div class="bg-slate-800/50 border border-slate-600 p-4 mb-6">
-                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">Your API Key:</label>
-                    <div class="flex items-center gap-3">
-                        <code class="flex-1 mono text-green-400 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm break-all" id="api-key">${accessToken}</code>
-                        <button onclick="copyToClipboard('api-key')" class="copy-btn bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 mono text-xs transition-colors border border-slate-600">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Code Examples -->
-                <details class="mb-4">
-                    <summary class="cursor-pointer text-slate-300 serif font-semibold mb-3">OpenAI SDK Example</summary>
-                    <div class="code-block mt-2" id="openai-code">import OpenAI from "openai";
-
-const client = new OpenAI();
-
-const response = await client.responses.create({
-  model: "gpt-4.1",
-  tools: [{
-    type: "mcp",
-    server_label: "${user?.username}",
-    server_url: "https://grokthyself.com/${user?.username}/mcp",
-    headers: { Authorization: "Bearer ${accessToken}" },
-  }],
-  input: "What does ${user?.username} think about AI?",
-});
-
-console.log(response.output_text);</div>
-                    <button onclick="copyCode('openai-code')" class="copy-btn mt-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 mono text-xs transition-colors border border-slate-600">Copy Code</button>
-                </details>
-
-                <details>
-                    <summary class="cursor-pointer text-slate-300 serif font-semibold mb-3">Anthropic SDK Example</summary>
-                    <div class="code-block mt-2" id="anthropic-code">import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic();
-
-const response = await client.messages.create({
-  model: "claude-sonnet-4-20250514",
-  max_tokens: 1024,
-  mcp_servers: [{
-    type: "url",
-    url: "https://grokthyself.com/${user?.username}/mcp",
-    name: "${user?.username}",
-    authorization_token: "${accessToken}",
-  }],
-  messages: [{ role: "user", content: "What does ${user?.username} think about AI?" }],
-});
-
-console.log(response.content);</div>
-                    <button onclick="copyCode('anthropic-code')" class="copy-btn mt-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 mono text-xs transition-colors border border-slate-600">Copy Code</button>
-                </details>
-            </div>
-            `
-                : ""
-            }
-
-            ${
-              isAdmin
-                ? `
-            <!-- Admin Section -->
-            <div class="bg-slate-900/50 border border-red-700/50 p-8 backdrop-blur-sm mb-8">
-                <div class="pillar-cap" style="border-top-color: rgba(239, 68, 68, 0.3);"></div>
-                <div class="mono text-xs text-red-500 tracking-widest mb-2">ADMIN ONLY</div>
-                <h3 class="text-xl font-bold serif text-slate-200 mb-6">User Management</h3>
-
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-slate-400 mb-2 mono">Enter username:</label>
-                    <div class="flex items-center gap-3">
-                        <input type="text" id="admin-username" placeholder="username"
-                            class="flex-1 mono text-slate-200 bg-slate-900/50 px-3 py-2 border border-slate-700 text-sm focus:border-red-500/50 focus:outline-none">
-                    </div>
-                </div>
-
-                <div class="flex gap-3">
-                    <button onclick="openUserSync()" class="flex-1 bg-red-900/30 hover:bg-red-800/40 text-red-400 px-4 py-3 mono text-sm transition-colors border border-red-700/50">
-                        Sync User (Make Premium)
-                    </button>
-                    <button onclick="openUserAdmin()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3 mono text-sm transition-colors border border-slate-600">
-                        View Admin Panel
-                    </button>
-                </div>
-
-                <p class="text-xs text-slate-500 mt-4 mono">
-                    Sync will mark user as premium and start downloading their posts.
-                </p>
-            </div>
-            `
-                : ""
-            }
-
-            <!-- Footer -->
-            <footer class="text-center py-8 border-t border-slate-800/50 mt-12">
-                <div class="text-sm text-slate-600 serif italic">
-                    γνῶθι σεαυτόν — Know Thyself
-                </div>
-            </footer>
-        </div>
-    </main>
-
-    <script>
-        function openUserSync() {
-            const username = document.getElementById('admin-username')?.value?.trim();
-            if (username) {
-                window.open('/' + username + '/sync', '_blank');
-            } else {
-                alert('Please enter a username');
-            }
-        }
-
-        function openUserAdmin() {
-            const username = document.getElementById('admin-username')?.value?.trim();
-            if (username) {
-                window.open('/' + username + '/admin', '_blank');
-            } else {
-                alert('Please enter a username');
-            }
-        }
-
-        const publicCheck = document.getElementById('public-check');
-        if (publicCheck) {
-            publicCheck.addEventListener('change', function() {
-                const params = new URLSearchParams();
-                params.set('public', this.checked);
-                window.location.href = '/dashboard?' + params.toString();
-            });
-        }
-
-        function copyToClipboard(elementId) {
-            const element = document.getElementById(elementId);
-            if (element) {
-                navigator.clipboard.writeText(element.textContent.trim()).then(() => {
-                    const button = event.target.closest('button');
-                    const originalText = button.textContent;
-                    button.textContent = 'Copied!';
-                    setTimeout(() => { button.textContent = originalText; }, 2000);
-                });
-            }
-        }
-
-        function copyCode(elementId) {
-            const element = document.getElementById(elementId);
-            if (element) {
-                navigator.clipboard.writeText(element.textContent).then(() => {
-                    const button = event.target.closest('button');
-                    const originalText = button.textContent;
-                    button.textContent = 'Copied!';
-                    setTimeout(() => { button.textContent = originalText; }, 2000);
-                });
-            }
-        }
-    </script>
-</body>
-</html>`;
-
-export default {
-  fetch: withSimplerAuth(
-    async (request: Request, env: Env, ctx: UserContext) => {
-      // Ensure required environment variables are present
-      if (!env.TWITTERAPI_SECRET) {
-        return new Response(
-          "TWITTERAPI_SECRET environment variable is required",
-          { status: 500 },
-        );
-      }
-
-      const url = new URL(request.url);
-      const [_tld, _domain, subdomain] = url.hostname.split(".").reverse();
-
-      if (url.pathname.endsWith("/mcp")) {
-        // e.g. /janwilmake/mcp
-        return handleMcp(request, env, ctx);
-      }
-
-      if (subdomain) {
-        return new Response("Not found", { status: 404 });
-      }
-
-      // Handle login page
-      if (url.pathname === "/login") {
-        if (ctx.authenticated) {
-          return Response.redirect(url.origin + "/dashboard", 302);
-        }
-        return new Response(loginPage, {
-          headers: { "Content-Type": "text/html;charset=utf8" },
-        });
-      }
-
-      if (url.pathname.endsWith("/admin")) {
-        if (!ctx.authenticated) {
-          return Response.redirect(url.origin + "/login", 302);
-        }
-
-        if (ctx.user.username !== ADMIN_USERNAME) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-
-        const username = url.pathname.split("/")[1].toLowerCase();
-
-        try {
-          // Get user's Durable Object
-          const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(DO_NAME_PREFIX + username),
-          );
-
-          return studioMiddleware(request, userDO.raw, {
-            dangerouslyDisableAuth: true,
-          });
-        } catch (error) {
-          console.error("Admin error:", error);
-          return new Response("Error loading admin", { status: 500 });
-        }
-      }
-
-      if (url.pathname.endsWith("/sync")) {
-        const username = url.pathname.split("/")[1].toLowerCase();
-
-        if (!ctx.user?.username) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-
-        // Only admin can sync other users
-        if (ctx.user.username !== ADMIN_USERNAME) {
-          return new Response("Unauthorized - Admin only", { status: 401 });
-        }
-
-        const userDO = env.USER_DO.get(
-          env.USER_DO.idFromName(DO_NAME_PREFIX + username),
-        );
-
-        // Ensure user exists and mark as premium (syncing makes them premium)
-        await userDO.ensureUserExists(username);
-        await userDO.exec(
-          "UPDATE users SET synced_from = CURRENT_TIMESTAMP WHERE username = ? AND synced_from IS NULL",
-          username,
-        );
-
-        // Start sync after marking premium
-        await userDO.startSync(username);
-        return new Response(`Started sync for ${username} (marked as premium)`);
-      }
-
-      // Handle dashboard page
-      if (url.pathname === "/dashboard") {
-        if (!ctx.authenticated) {
-          return Response.redirect(url.origin + "/login", 302);
-        }
-
-        try {
-          // Get user's Durable Object
-          const userDO = env.USER_DO.get(
-            env.USER_DO.idFromName(
-              DO_NAME_PREFIX + ctx.user.username.toLowerCase(),
-            ),
-          );
-
-          // Handle query parameters for public/featured updates
-          const isPublic = url.searchParams.get("public") === "true";
-          const isFeatured = url.searchParams.get("featured") === "true";
-
-          // Update database if query parameters are present
-          if (
-            url.searchParams.has("public") ||
-            url.searchParams.has("featured")
-          ) {
-            let updateQuery = "UPDATE users SET ";
-            const updateParams = [];
-            const updateParts = [];
-
-            if (url.searchParams.has("public")) {
-              updateParts.push("is_public = ?");
-              updateParams.push(isPublic ? 1 : 0);
-            }
-
-            if (url.searchParams.has("featured")) {
-              updateParts.push("is_featured = ?");
-              updateParams.push(isFeatured ? 1 : 0);
-            }
-
-            updateQuery +=
-              updateParts.join(", ") +
-              ", updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-            updateParams.push(ctx.user.id);
-
-            await userDO.exec(updateQuery, ...updateParams);
-          }
-
-          // Ensure user exists in the DO before getting stats
-          await userDO.ensureUserExists(ctx.user.username);
-
-          // Get user stats (this will now include the updated values)
-          const stats = await userDO.getUserStats();
-          const isAdmin = ctx.user.username === ADMIN_USERNAME;
-          const dashboardHtml = dashboardPage(
-            ctx.user,
-            stats,
-            ctx.accessToken || "",
-            isAdmin,
-          );
-
-          return new Response(dashboardHtml, {
-            headers: { "Content-Type": "text/html;charset=utf8" },
-          });
-        } catch (error) {
-          console.error("Dashboard error:", error);
-          return new Response("Error loading dashboard", { status: 500 });
-        }
-      }
-
-      if (url.pathname === "/stripe-webhook") {
-        return handleStripeWebhook(request, env);
-      }
-      return new Response("Not found", { status: 404 });
-    },
-    { isLoginRequired: false, scope: "profile" },
-  ),
-} satisfies ExportedHandler<Env>;
-
-const streamToBuffer = async (
-  readableStream: ReadableStream<Uint8Array>,
-): Promise<Uint8Array> => {
-  const chunks: Uint8Array[] = [];
-  const reader = readableStream.getReader();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-
-  let position = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, position);
-    position += chunk.length;
-  }
-
-  return result;
-};
