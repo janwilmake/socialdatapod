@@ -1,13 +1,19 @@
 /// <reference types="@cloudflare/workers-types" />
 import { DurableObject } from "cloudflare:workers";
 import Stripe from "stripe";
+import {
+  studioMiddleware,
+  Queryable,
+  QueryableHandler
+} from "queryable-object";
 
+const GLOBAL_DO_NAME = "__global99__";
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface Env {
-  USER_DO: DurableObjectNamespace<UserDO>;
+  USER_DO: DurableObjectNamespace<UserDO & QueryableHandler>;
   SYNC_QUEUE: Queue<SyncJob>;
   X_CLIENT_ID: string;
   X_CLIENT_SECRET: string;
@@ -217,7 +223,7 @@ function getUserDO(env: Env, xUserId: string): DurableObjectStub<UserDO> {
 }
 
 function getRegistry(env: Env): DurableObjectStub<UserDO> {
-  return env.USER_DO.get(env.USER_DO.idFromName("__registry__"));
+  return env.USER_DO.get(env.USER_DO.idFromName(GLOBAL_DO_NAME));
 }
 
 // ============================================================================
@@ -582,6 +588,18 @@ export default {
       });
     }
 
+    // ── Admin: Outerbase Studio (janwilmake only) ──
+    if (path.startsWith("/admin")) {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth || auth.username !== "janwilmake") {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const stub = getUserDO(env, auth.sub);
+      return studioMiddleware(request, stub.raw, {
+        dangerouslyDisableAuth: true
+      });
+    }
+
     return new Response("Not Found", { status: 404 });
   },
 
@@ -698,6 +716,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
     </div>
     <div style="display:flex;align-items:center;gap:12px;padding-top:4px;flex-shrink:0">
       <span style="color:#555;font-size:13px">@${status.xUser?.username || ""}</span>
+      ${status.xUser?.username === "janwilmake" ? `<a href="/admin" style="color:#555;font-size:13px;text-decoration:none">Admin</a>` : ""}
       <a href="/auth/logout" style="color:#555;font-size:13px;text-decoration:none">Logout</a>
     </div>
   </div>
@@ -729,7 +748,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
           3,
           !!status.github?.folder || status.github?.folder === "",
           "Choose target folder (optional)",
-          `Defaults to repo root. Posts go to <code>{folder}/posts/{id}.md</code>, bookmarks to <code>{folder}/bookmarks/{id}.md</code>.<br>
+          `Defaults to repo root. Posts go to <code>{folder}/x-posts/{id}.md</code>, bookmarks to <code>{folder}/x-bookmarks/{id}.md</code>.<br>
            <div style="margin-top:12px"><input id="folder" type="text" placeholder="(root)" value="${
              status.github?.folder || ""
            }"><button class="btn btn-sec" style="margin-left:8px" onclick="saveFolder()">Save</button></div>`
@@ -849,6 +868,7 @@ interface UserStatus {
 // Durable Object: UserDO (per-user + global registry)
 // ============================================================================
 
+@Queryable()
 export class UserDO extends DurableObject<Env> {
   private sql: SqlStorage;
 
@@ -859,52 +879,58 @@ export class UserDO extends DurableObject<Env> {
   }
 
   private init() {
-    this.sql.exec(
-      `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)`
-    );
-    // Registry table — only populated on the __registry__ DO instance
     this.sql.exec(`CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
       username TEXT,
       subscribed INTEGER DEFAULT 0,
       created_at INTEGER
     )`);
-  }
 
-  private kvGet(key: string): string | null {
-    const rows = this.sql
-      .exec("SELECT value FROM kv WHERE key = ?", key)
-      .toArray();
-    return rows.length > 0 ? (rows[0].value as string) : null;
-  }
-
-  private kvSet(key: string, value: string) {
-    this.sql.exec(
-      "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)",
-      key,
-      value
+    // Migrate: add columns introduced after initial schema
+    const existing = new Set(
+      this.sql
+        .exec("PRAGMA table_info(users)")
+        .toArray()
+        .map((r: any) => r.name as string)
     );
+    const additions: [string, string][] = [
+      ["name", "TEXT"],
+      ["profile_image_url", "TEXT"],
+      ["x_access_token", "TEXT"],
+      ["x_refresh_token", "TEXT"],
+      ["x_expires_at", "INTEGER DEFAULT 0"],
+      ["gh_installation_id", "INTEGER"],
+      ["gh_owner", "TEXT"],
+      ["gh_repo", "TEXT"],
+      ["gh_folder", "TEXT DEFAULT ''"],
+      ["stripe_customer_id", "TEXT"],
+      ["stripe_subscription_id", "TEXT"],
+      ["last_posts_sync_at", "INTEGER"],
+      ["last_bookmarks_sync_at", "INTEGER"],
+      ["last_posts_since_id", "TEXT"],
+      ["last_bookmarks_since_id", "TEXT"],
+      ["last_error", "TEXT"]
+    ];
+    for (const [col, type] of additions) {
+      if (!existing.has(col)) {
+        this.sql.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+      }
+    }
   }
 
-  private kvGetJson<T>(key: string): T | null {
-    const v = this.kvGet(key);
-    return v ? JSON.parse(v) : null;
+  private row(): any {
+    return this.sql.exec("SELECT * FROM users LIMIT 1").toArray()[0] ?? null;
   }
 
-  private kvSetJson(key: string, value: any) {
-    this.kvSet(key, JSON.stringify(value));
-  }
-
-  // ── Registry methods (called only on __registry__ DO) ──
+  // ── Registry methods (called only on GLOBAL DO) ──
 
   async registerUser(userId: string, username: string) {
     this.sql.exec(
       `INSERT INTO users (user_id, username, created_at) VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET username=?`,
+       ON CONFLICT(user_id) DO UPDATE SET username=excluded.username`,
       userId,
       username,
-      Date.now(),
-      username
+      Date.now()
     );
   }
 
@@ -934,19 +960,26 @@ export class UserDO extends DurableObject<Env> {
     refreshToken: string;
     expiresAt: number;
   }) {
-    this.kvSetJson("x_user", {
-      userId: data.userId,
-      username: data.username,
-      name: data.name,
-      profileImageUrl: data.profileImageUrl
-    });
-    this.kvSet("x_access_token", data.accessToken);
-    this.kvSet("x_refresh_token", data.refreshToken);
-    this.kvSet("x_expires_at", String(data.expiresAt));
-
-    // Register in global registry
+    this.sql.exec(
+      `INSERT INTO users (user_id, username, name, profile_image_url, x_access_token, x_refresh_token, x_expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         username=excluded.username, name=excluded.name,
+         profile_image_url=excluded.profile_image_url,
+         x_access_token=excluded.x_access_token,
+         x_refresh_token=excluded.x_refresh_token,
+         x_expires_at=excluded.x_expires_at`,
+      data.userId,
+      data.username,
+      data.name,
+      data.profileImageUrl,
+      data.accessToken,
+      data.refreshToken,
+      data.expiresAt,
+      Date.now()
+    );
     const registry = this.env.USER_DO.get(
-      this.env.USER_DO.idFromName("__registry__")
+      this.env.USER_DO.idFromName(GLOBAL_DO_NAME)
     );
     await registry.registerUser(data.userId, data.username);
   }
@@ -957,68 +990,81 @@ export class UserDO extends DurableObject<Env> {
     repo: string;
     folder: string;
   }) {
-    this.kvSetJson("gh_install", data);
+    this.sql.exec(
+      `UPDATE users SET gh_installation_id=?, gh_owner=?, gh_repo=?, gh_folder=?
+       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      data.installationId,
+      data.owner,
+      data.repo,
+      data.folder
+    );
   }
 
   async setFolder(folder: string) {
-    const install = this.kvGetJson<any>("gh_install");
-    if (install) {
-      install.folder = folder;
-      this.kvSetJson("gh_install", install);
-    }
+    this.sql.exec(
+      `UPDATE users SET gh_folder=? WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      folder
+    );
   }
 
   async activateSubscription(stripeCustomerId: string, subscriptionId: string) {
-    this.kvSet("subscribed", "true");
-    this.kvSet("stripe_customer_id", stripeCustomerId);
-    this.kvSet("stripe_subscription_id", subscriptionId);
+    this.sql.exec(
+      `UPDATE users SET subscribed=1, stripe_customer_id=?, stripe_subscription_id=?
+       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      stripeCustomerId,
+      subscriptionId
+    );
   }
 
   async deactivateSubscription() {
-    this.kvSet("subscribed", "false");
+    this.sql.exec(
+      `UPDATE users SET subscribed=0 WHERE user_id=(SELECT user_id FROM users LIMIT 1)`
+    );
   }
 
   async getStatus(): Promise<UserStatus> {
-    const xUser = this.kvGetJson<any>("x_user");
-    const install = this.kvGetJson<any>("gh_install");
+    const u = this.row();
     return {
-      xUser: xUser
+      xUser: u?.username
         ? {
-            username: xUser.username,
-            name: xUser.name,
-            profileImageUrl: xUser.profileImageUrl
+            username: u.username,
+            name: u.name || "",
+            profileImageUrl: u.profile_image_url || ""
           }
         : null,
-      githubConnected: !!install,
-      github: install,
-      subscribed: this.kvGet("subscribed") === "true",
-      lastPostsSyncAt: Number(this.kvGet("last_posts_sync_at")) || null,
-      lastBookmarksSyncAt: Number(this.kvGet("last_bookmarks_sync_at")) || null,
-      lastError: this.kvGet("last_error")
+      githubConnected: !!u?.gh_installation_id,
+      github: u?.gh_installation_id
+        ? {
+            installationId: u.gh_installation_id,
+            owner: u.gh_owner,
+            repo: u.gh_repo,
+            folder: u.gh_folder || ""
+          }
+        : null,
+      subscribed: u?.subscribed === 1,
+      lastPostsSyncAt: u?.last_posts_sync_at || null,
+      lastBookmarksSyncAt: u?.last_bookmarks_sync_at || null,
+      lastError: u?.last_error || null
     };
   }
 
   // ── X token refresh ──
 
   private async getValidXToken(): Promise<string | null> {
-    const expiresAt = Number(this.kvGet("x_expires_at") || 0);
-    if (Date.now() < expiresAt - 60_000) {
-      return this.kvGet("x_access_token");
-    }
-    const refreshToken = this.kvGet("x_refresh_token");
-    if (!refreshToken) return null;
+    const u = this.row();
+    if (!u) return null;
+    if (Date.now() < (u.x_expires_at || 0) - 60_000) return u.x_access_token;
+    if (!u.x_refresh_token) return null;
 
     const res = await fetch("https://api.x.com/2/oauth2/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${btoa(
-          `${this.env.X_CLIENT_ID}:${this.env.X_CLIENT_SECRET}`
-        )}`
+        Authorization: `Basic ${btoa(`${this.env.X_CLIENT_ID}:${this.env.X_CLIENT_SECRET}`)}`
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        refresh_token: refreshToken,
+        refresh_token: u.x_refresh_token,
         client_id: this.env.X_CLIENT_ID
       })
     });
@@ -1028,12 +1074,12 @@ export class UserDO extends DurableObject<Env> {
       refresh_token?: string;
       expires_in?: number;
     };
-    this.kvSet("x_access_token", tokens.access_token);
-    if (tokens.refresh_token)
-      this.kvSet("x_refresh_token", tokens.refresh_token);
-    this.kvSet(
-      "x_expires_at",
-      String(Date.now() + (tokens.expires_in || 7200) * 1000)
+    this.sql.exec(
+      `UPDATE users SET x_access_token=?, x_refresh_token=?, x_expires_at=?
+       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      tokens.access_token,
+      tokens.refresh_token || u.x_refresh_token,
+      Date.now() + (tokens.expires_in || 7200) * 1000
     );
     return tokens.access_token;
   }
@@ -1042,50 +1088,60 @@ export class UserDO extends DurableObject<Env> {
 
   async runSync() {
     try {
-      if (this.kvGet("subscribed") !== "true") return;
-      const install = this.kvGetJson<any>("gh_install");
-      if (!install) return;
-
-      const xUser = this.kvGetJson<any>("x_user");
-      if (!xUser) return;
+      const u = this.row();
+      if (!u?.subscribed || !u?.gh_installation_id || !u?.user_id) return;
 
       const accessToken = await this.getValidXToken();
       if (!accessToken) throw new Error("Could not get valid X token");
 
+      const install = {
+        installationId: u.gh_installation_id,
+        owner: u.gh_owner,
+        repo: u.gh_repo,
+        folder: u.gh_folder || ""
+      };
       const ghToken = await getInstallationToken(
         install.installationId,
         this.env
       );
 
       // Sync posts
-      const lastPostsSince = this.kvGet("last_posts_since_id") || undefined;
       const newPostsSince = await this.syncPosts(
-        xUser.userId,
+        u.user_id,
         accessToken,
         ghToken,
         install,
-        lastPostsSince
+        u.last_posts_since_id || undefined
       );
-      if (newPostsSince) this.kvSet("last_posts_since_id", newPostsSince);
-      this.kvSet("last_posts_sync_at", String(Date.now()));
+      this.sql.exec(
+        `UPDATE users SET last_posts_since_id=?, last_posts_sync_at=? WHERE user_id=?`,
+        newPostsSince || u.last_posts_since_id,
+        Date.now(),
+        u.user_id
+      );
 
       // Sync bookmarks
-      const lastBookmarksSince =
-        this.kvGet("last_bookmarks_since_id") || undefined;
       const newBookmarksSince = await this.syncBookmarks(
-        xUser.userId,
+        u.user_id,
         accessToken,
         ghToken,
         install,
-        lastBookmarksSince
+        u.last_bookmarks_since_id || undefined
       );
-      if (newBookmarksSince)
-        this.kvSet("last_bookmarks_since_id", newBookmarksSince);
-      this.kvSet("last_bookmarks_sync_at", String(Date.now()));
-
-      this.kvSet("last_error", "");
+      this.sql.exec(
+        `UPDATE users SET last_bookmarks_since_id=?, last_bookmarks_sync_at=?, last_error='' WHERE user_id=?`,
+        newBookmarksSince || u.last_bookmarks_since_id,
+        Date.now(),
+        u.user_id
+      );
     } catch (e: any) {
-      this.kvSet("last_error", String(e?.message || e));
+      const u = this.row();
+      if (u?.user_id)
+        this.sql.exec(
+          `UPDATE users SET last_error=? WHERE user_id=?`,
+          String(e?.message || e),
+          u.user_id
+        );
       throw e;
     }
   }
@@ -1097,13 +1153,24 @@ export class UserDO extends DurableObject<Env> {
     install: { owner: string; repo: string; folder: string },
     sinceId?: string
   ): Promise<string | null> {
-    let newestId: string | undefined;
+    const allTweets: any[] = [];
+    const authorMap: Record<string, string> = {};
+    const quotedMap: Record<string, any> = {};
     let nextToken: string | undefined;
+    let newestId: string | undefined;
 
     do {
       const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/tweets`);
       fetchUrl.searchParams.set("max_results", "100");
-      fetchUrl.searchParams.set("tweet.fields", "created_at,public_metrics,referenced_tweets");
+      fetchUrl.searchParams.set(
+        "tweet.fields",
+        "created_at,public_metrics,referenced_tweets,conversation_id,entities,author_id"
+      );
+      fetchUrl.searchParams.set(
+        "expansions",
+        "author_id,referenced_tweets.id,referenced_tweets.id.author_id"
+      );
+      fetchUrl.searchParams.set("user.fields", "username");
       if (sinceId) fetchUrl.searchParams.set("since_id", sinceId);
       if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
 
@@ -1117,19 +1184,42 @@ export class UserDO extends DurableObject<Env> {
       }
       const data = (await res.json()) as {
         data?: any[];
+        includes?: {
+          users?: { id: string; username: string }[];
+          tweets?: any[];
+        };
         meta?: { newest_id?: string; next_token?: string };
       };
 
       if (!data.data?.length) break;
       if (!newestId) newestId = data.meta?.newest_id;
 
-      for (const tweet of data.data) {
-        const md = this.tweetToMarkdown(tweet);
-        await this.writeFile(ghToken, install, `posts/${tweet.id}.md`, md, `Add post ${tweet.id}`);
-      }
-
+      for (const u of data.includes?.users || []) authorMap[u.id] = u.username;
+      for (const t of data.includes?.tweets || []) quotedMap[t.id] = t;
+      allTweets.push(...data.data);
       nextToken = data.meta?.next_token;
+      if (allTweets.length >= 1000) break;
     } while (nextToken);
+
+    const dateGroups: Record<string, any[]> = {};
+    for (const tweet of allTweets) {
+      const date = (tweet.created_at || "").slice(0, 10) || "unknown";
+      if (!dateGroups[date]) dateGroups[date] = [];
+      dateGroups[date].push(tweet);
+    }
+
+    for (const [date, tweets] of Object.entries(dateGroups)) {
+      tweets.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      await this.writeDateFile(
+        ghToken,
+        install,
+        `x-posts/${date}.md`,
+        tweets,
+        authorMap,
+        quotedMap,
+        date
+      );
+    }
 
     return newestId || null;
   }
@@ -1141,17 +1231,23 @@ export class UserDO extends DurableObject<Env> {
     install: { owner: string; repo: string; folder: string },
     sinceId?: string
   ): Promise<string | null> {
-    const PAGE_SIZES = [1, 2, 5, 10, 20, 50, 100];
-    const collected: any[] = [];
+    const allTweets: any[] = [];
     const authorMap: Record<string, string> = {};
+    const quotedMap: Record<string, any> = {};
     let nextToken: string | undefined;
     let newestId: string | undefined;
 
-    for (const pageSize of PAGE_SIZES) {
+    while (allTweets.length < 1000) {
       const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/bookmarks`);
-      fetchUrl.searchParams.set("max_results", String(pageSize));
-      fetchUrl.searchParams.set("tweet.fields", "created_at,author_id,public_metrics");
-      fetchUrl.searchParams.set("expansions", "author_id");
+      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set(
+        "tweet.fields",
+        "created_at,author_id,public_metrics,referenced_tweets,conversation_id,entities"
+      );
+      fetchUrl.searchParams.set(
+        "expansions",
+        "author_id,referenced_tweets.id,referenced_tweets.id.author_id"
+      );
       fetchUrl.searchParams.set("user.fields", "username");
       if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
 
@@ -1165,95 +1261,228 @@ export class UserDO extends DurableObject<Env> {
       }
       const data = (await res.json()) as {
         data?: any[];
-        includes?: { users?: { id: string; username: string }[] };
+        includes?: {
+          users?: { id: string; username: string }[];
+          tweets?: any[];
+        };
         meta?: { next_token?: string; newest_id?: string };
       };
 
       if (!data.data?.length) break;
 
-      for (const u of data.includes?.users || []) {
-        authorMap[u.id] = u.username;
-      }
+      for (const u of data.includes?.users || []) authorMap[u.id] = u.username;
+      for (const t of data.includes?.tweets || []) quotedMap[t.id] = t;
       if (!newestId) newestId = data.meta?.newest_id || data.data[0]?.id;
 
       let done = false;
       for (const tweet of data.data) {
-        if (sinceId && tweet.id === sinceId) { done = true; break; }
-        collected.push(tweet);
+        if (sinceId && tweet.id === sinceId) {
+          done = true;
+          break;
+        }
+        allTweets.push(tweet);
       }
       if (done || !data.meta?.next_token) break;
       nextToken = data.meta.next_token;
     }
 
-    for (const tweet of collected) {
-      const md = this.tweetToMarkdown(tweet, authorMap[tweet.author_id]);
-      await this.writeFile(ghToken, install, `bookmarks/${tweet.id}.md`, md, `Add bookmark ${tweet.id}`);
+    const dateGroups: Record<string, any[]> = {};
+    for (const tweet of allTweets) {
+      const date = (tweet.created_at || "").slice(0, 10) || "unknown";
+      if (!dateGroups[date]) dateGroups[date] = [];
+      dateGroups[date].push(tweet);
     }
+
+    for (const [date, tweets] of Object.entries(dateGroups)) {
+      tweets.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      await this.writeDateFile(
+        ghToken,
+        install,
+        `x-bookmarks/${date}.md`,
+        tweets,
+        authorMap,
+        quotedMap,
+        date
+      );
+    }
+
     return newestId || null;
   }
 
-  private tweetToMarkdown(tweet: any, authorUsername?: string): string {
-    const front = [
-      "---",
-      `id: "${tweet.id}"`,
-      `created_at: "${tweet.created_at || ""}"`,
-      authorUsername ? `author: "${authorUsername}"` : "",
-      tweet.public_metrics
-        ? `likes: ${tweet.public_metrics.like_count || 0}`
-        : "",
-      tweet.public_metrics
-        ? `retweets: ${tweet.public_metrics.retweet_count || 0}`
-        : "",
-      `url: "https://x.com/i/status/${tweet.id}"`,
-      "---",
-      ""
-    ]
-      .filter(Boolean)
-      .join("\n");
-    return front + "\n" + (tweet.text || "") + "\n";
+  private expandUrls(
+    text: string,
+    entities?: {
+      urls?: Array<{
+        url: string;
+        expanded_url?: string;
+        unwound_url?: string;
+        display_url?: string;
+      }>;
+    }
+  ): string {
+    if (!entities?.urls?.length) return text;
+    let result = text;
+    for (const u of entities.urls) {
+      const resolved = u.unwound_url || u.expanded_url;
+      if (resolved && u.url) result = result.split(u.url).join(resolved);
+    }
+    return result;
   }
 
-  private async writeFile(
+  private quotedBlock(
+    quoted: any,
+    quotedAuthor?: string,
+    label = "Quoting"
+  ): string {
+    const text = this.expandUrls(quoted.text || "", quoted.entities);
+    const url = `https://x.com/${quotedAuthor || "i"}/status/${quoted.id}`;
+    const mediaUrls: string[] = [];
+    for (const u of quoted.entities?.urls || []) {
+      if (
+        u.display_url?.startsWith("pic.") ||
+        (u.unwound_url || u.expanded_url || "").includes("twimg.com")
+      ) {
+        const resolved = u.unwound_url || u.expanded_url || u.url;
+        if (resolved) mediaUrls.push(resolved);
+      }
+    }
+    const lines: string[] = [
+      `> **${label} [@${quotedAuthor || "unknown"}](${url})**`,
+      `>`
+    ];
+    for (const line of text.split("\n")) lines.push(`> ${line}`);
+    for (const murl of mediaUrls) {
+      lines.push(`>`);
+      lines.push(`> ![](${murl})`);
+    }
+    lines.push(`>`);
+    lines.push(`> — [View on X](${url})`);
+    return lines.join("\n");
+  }
+
+  private tweetSection(
+    tweet: any,
+    authorUsername?: string,
+    quotedTweet?: any,
+    quotedAuthor?: string,
+    repliedToTweet?: any,
+    repliedToAuthor?: string
+  ): string {
+    const text = this.expandUrls(tweet.text || "", tweet.entities);
+    const url = `https://x.com/${authorUsername || "i"}/status/${tweet.id}`;
+    const time = tweet.created_at
+      ? new Date(tweet.created_at).toISOString().slice(11, 16)
+      : "";
+    const authorPart = authorUsername ? ` · @${authorUsername}` : "";
+    const metrics = tweet.public_metrics
+      ? `*♥ ${tweet.public_metrics.like_count || 0} · ↺ ${tweet.public_metrics.retweet_count || 0}*\n\n`
+      : "";
+    const repliedToPart = repliedToTweet
+      ? "\n\n" +
+        this.quotedBlock(repliedToTweet, repliedToAuthor, "In reply to")
+      : "";
+    const quotedPart = quotedTweet
+      ? "\n\n" + this.quotedBlock(quotedTweet, quotedAuthor, "Quoting")
+      : "";
+    return `## ${time}${authorPart} · [↗](${url})\n<!-- tweet-id: ${tweet.id} -->\n\n${metrics}${text}${repliedToPart}${quotedPart}\n`;
+  }
+
+  private async writeDateFile(
     ghToken: string,
     install: { owner: string; repo: string; folder: string },
     relativePath: string,
-    content: string,
-    message: string
+    newTweets: any[],
+    authorMap: Record<string, string>,
+    quotedMap: Record<string, any>,
+    date: string
   ) {
     const folder = install.folder
       ? install.folder.replace(/^\/+|\/+$/g, "")
       : "";
     const fullPath = folder ? `${folder}/${relativePath}` : relativePath;
-    const apiUrl = `https://api.github.com/repos/${install.owner}/${install.repo}/contents/${encodeURIComponent(
-      fullPath
-    ).replace(/%2F/g, "/")}`;
+    const apiUrl = `https://api.github.com/repos/${install.owner}/${install.repo}/contents/${encodeURIComponent(fullPath).replace(/%2F/g, "/")}`;
+    const ghHeaders = {
+      Authorization: `Bearer ${ghToken}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "x-archive-sync"
+    };
 
-    // Check if file exists to get SHA (needed for updates, but we skip if it does)
-    const existing = await fetch(apiUrl, {
-      headers: {
-        Authorization: `Bearer ${ghToken}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "x-archive-sync"
-      }
-    });
+    const existing = await fetch(apiUrl, { headers: ghHeaders });
+    let existingContent = "";
+    let sha: string | undefined;
+
     if (existing.status === 200) {
-      // Already exists — skip (idempotent)
-      return;
+      const existingData = (await existing.json()) as {
+        sha: string;
+        content: string;
+      };
+      sha = existingData.sha;
+      existingContent = new TextDecoder().decode(
+        Uint8Array.from(atob(existingData.content.replace(/\s/g, "")), (c) =>
+          c.charCodeAt(0)
+        )
+      );
     }
 
-    const encoded = btoa(unescape(encodeURIComponent(content)));
+    // Only append tweets not already present in the file
+    const tweetsToAdd = newTweets.filter(
+      (t) => !existingContent.includes(`<!-- tweet-id: ${t.id} -->`)
+    );
+    if (tweetsToAdd.length === 0) return;
+
+    const newSections = tweetsToAdd
+      .map((tweet) => {
+        const author = authorMap[tweet.author_id];
+        const quotedRef = tweet.referenced_tweets?.find(
+          (r: any) => r.type === "quoted"
+        );
+        const quotedTweet = quotedRef ? quotedMap[quotedRef.id] : undefined;
+        const quotedAuthor = quotedTweet
+          ? authorMap[quotedTweet.author_id]
+          : undefined;
+        const repliedToRef = tweet.referenced_tweets?.find(
+          (r: any) => r.type === "replied_to"
+        );
+        // Only show replied-to block if parent is NOT already in this date file
+        const repliedToInSameConv = repliedToRef
+          ? newTweets.some((t) => t.id === repliedToRef.id) ||
+            existingContent.includes(`<!-- tweet-id: ${repliedToRef.id} -->`)
+          : false;
+        const repliedToTweet =
+          repliedToRef && !repliedToInSameConv
+            ? quotedMap[repliedToRef.id]
+            : undefined;
+        const repliedToAuthor = repliedToTweet
+          ? authorMap[repliedToTweet.author_id]
+          : undefined;
+        return this.tweetSection(
+          tweet,
+          author,
+          quotedTweet,
+          quotedAuthor,
+          repliedToTweet,
+          repliedToAuthor
+        );
+      })
+      .join("\n");
+
+    const finalContent = existingContent
+      ? existingContent + "\n" + newSections
+      : `# ${date}\n\n${newSections}`;
+    const encoded = btoa(unescape(encodeURIComponent(finalContent)));
+
+    const body: any = {
+      message: sha ? `Update ${date}` : `Add ${date}`,
+      content: encoded
+    };
+    if (sha) body.sha = sha;
+
     const res = await fetch(apiUrl, {
       method: "PUT",
-      headers: {
-        Authorization: `Bearer ${ghToken}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "User-Agent": "x-archive-sync"
-      },
-      body: JSON.stringify({ message, content: encoded })
+      headers: { ...ghHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
     });
     if (!res.ok && res.status !== 422) {
-      // 422 = already exists race condition, safe to ignore
       throw new Error(`GitHub write failed: ${res.status} ${await res.text()}`);
     }
   }
