@@ -228,11 +228,7 @@ function getRegistry(env: Env): DurableObjectStub<UserDO & { raw: RawFn }> {
 // ============================================================================
 
 export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const secure = secureCookieFlags(url);
@@ -339,7 +335,10 @@ export default {
         userId: xUser.id,
         username: xUser.username,
         name: xUser.name,
-        profileImageUrl: xUser.profile_image_url || "",
+        profileImageUrl: (xUser.profile_image_url || "").replace(
+          "_normal",
+          "_400x400"
+        ),
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || "",
         expiresAt: Date.now() + (tokens.expires_in || 7200) * 1000
@@ -393,7 +392,6 @@ export default {
 
     if (path === "/auth/github/callback") {
       const installationId = url.searchParams.get("installation_id");
-      const setupAction = url.searchParams.get("setup_action");
       const state = url.searchParams.get("state"); // we passed x user id
 
       if (!installationId || !state) {
@@ -571,6 +569,28 @@ export default {
       return Response.json({ ok: true, queued: true });
     }
 
+    // ── Stripe billing portal ──
+    if (path === "/api/billing-portal" && request.method === "POST") {
+      const auth = await getAuthFromRequest(request, env);
+      if (!auth)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const registry = getRegistry(env);
+      const customerId = await registry.getStripeCustomerId(auth.sub);
+      if (!customerId)
+        return Response.json(
+          { error: "No active subscription" },
+          { status: 400 }
+        );
+      const stripe = new Stripe(env.STRIPE_SECRET, {
+        apiVersion: "2025-12-15.clover"
+      });
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${url.origin}/dashboard`
+      });
+      return Response.json({ url: session.url });
+    }
+
     // ── Dashboard ──
     if (path === "/dashboard") {
       const auth = await getAuthFromRequest(request, env);
@@ -581,7 +601,7 @@ export default {
         });
       }
       const status = await getRegistry(env).getStatus(auth.sub);
-      return new Response(renderDashboard(status, env), {
+      return new Response(renderDashboard(status), {
         headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
@@ -601,7 +621,7 @@ export default {
   },
 
   // ── Cron: every day, enqueue all subscribed users for sync ──
-  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledController, env: Env) {
     const registry = getRegistry(env);
     const userIds = await registry.getSubscribedUserIds();
     // Enqueue in batches; Cloudflare queues support sendBatch up to 100
@@ -659,23 +679,32 @@ a.btn:hover{opacity:.85}
 </body></html>`;
 }
 
-function renderDashboard(status: UserStatus, env: Env): string {
+function renderDashboard(status: UserStatus): string {
   const check = (done: boolean) =>
     done
       ? `<span style="color:#34c759">✓</span>`
       : `<span style="color:#666">○</span>`;
 
-  const step = (num: number, done: boolean, title: string, body: string) => `
-    <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;margin-bottom:16px;${
+  const step = (
+    num: number,
+    done: boolean,
+    title: string,
+    body: string,
+    aside = ""
+  ) => `
+    <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;margin-bottom:16px;display:flex;align-items:center;gap:16px;${
       done ? "border-color:rgba(52,199,89,.3)" : ""
     }">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-        <div style="width:28px;height:28px;border-radius:50%;background:${
-          done ? "rgba(52,199,89,.2)" : "rgba(255,255,255,.1)"
-        };display:flex;align-items:center;justify-content:center;font-size:14px">${check(done)}</div>
-        <div style="font-size:17px;font-weight:600">${num}. ${title}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="width:28px;height:28px;border-radius:50%;background:${
+            done ? "rgba(52,199,89,.2)" : "rgba(255,255,255,.1)"
+          };display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${check(done)}</div>
+          <div style="font-size:17px;font-weight:600">${num}. ${title}</div>
+        </div>
+        <div style="margin-left:40px;color:#888;font-size:14px;line-height:1.5">${body}</div>
       </div>
-      <div style="margin-left:40px;color:#888;font-size:14px;line-height:1.5">${body}</div>
+      ${aside ? `<div style="flex-shrink:0">${aside}</div>` : ""}
     </div>`;
 
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Thyself</title>
@@ -716,13 +745,21 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
     </div>
     <div style="display:flex;align-items:center;gap:12px;padding-top:4px;flex-shrink:0">
       <span style="color:#555;font-size:13px">@${status.xUser?.username || ""}</span>
-      ${status.xUser?.username === "janwilmake" ? `<a href="/admin" style="color:#555;font-size:13px;text-decoration:none">Admin</a>` : ""}
+      ${status.xUser?.username === "janwilmake" ? `<a href="/admin" target="_blank" style="color:#555;font-size:13px;text-decoration:none">Admin</a>` : ""}
       <a href="/auth/logout" style="color:#555;font-size:13px;text-decoration:none">Logout</a>
     </div>
   </div>
   <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin-bottom:28px">
 
-  ${step(1, true, "Sign in with X", `Connected as @${status.xUser?.username || ""}`)}
+  ${step(
+    1,
+    true,
+    "Sign in with X",
+    `Connected as @${status.xUser?.username || ""}`,
+    status.xUser?.profileImageUrl
+      ? `<img src="${status.xUser.profileImageUrl}" style="width:48px;height:48px;border-radius:50%;object-fit:cover">`
+      : ""
+  )}
 
   ${step(
     2,
@@ -748,7 +785,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
           3,
           !!status.github?.folder || status.github?.folder === "",
           "Choose target folder (optional)",
-          `Defaults to repo root. Posts go to <code>{folder}/x-posts/{id}.md</code>, bookmarks to <code>{folder}/x-bookmarks/{id}.md</code>.<br>
+          `Defaults to repo root. Posts go to <code>{folder}/x-posts/{date}.md</code>, bookmarks to <code>{folder}/x-bookmarks/{date}.md</code>.<br>
            <div style="margin-top:12px"><input id="folder" type="text" placeholder="(root)" value="${
              status.github?.folder || ""
            }"><button class="btn btn-sec" style="margin-left:8px" onclick="saveFolder()">Save</button></div>`
@@ -761,7 +798,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
     status.subscribed,
     "Subscribe — $8/month",
     status.subscribed
-      ? `Active. Next sync runs daily.`
+      ? `Active. Next sync runs daily.<br><button class="btn btn-sec" style="margin-top:12px" onclick="billingPortal()">Manage subscription</button>`
       : `<button class="btn" style="margin-top:12px" onclick="subscribe()">Subscribe</button>`
   )}
 
@@ -830,6 +867,11 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
 </div>
 
 <script>
+async function billingPortal(){
+  const r=await fetch('/api/billing-portal',{method:'POST'});
+  const d=await r.json();
+  if(d.url)location.href=d.url;else alert('Error: '+JSON.stringify(d));
+}
 async function subscribe(){
   const r=await fetch('/api/create-checkout',{method:'POST'});
   const d=await r.json();
@@ -1072,6 +1114,11 @@ export class UserDO extends DurableObject<Env> {
       subscriptionId,
       userId
     );
+  }
+
+  async getStripeCustomerId(userId: string): Promise<string> {
+    const u = this.row(userId);
+    return u?.stripe_customer_id || "";
   }
 
   async deactivateSubscription(userId: string) {
@@ -1526,7 +1573,9 @@ export class UserDO extends DurableObject<Env> {
     const finalContent = existingContent
       ? existingContent + "\n" + newSections
       : `# ${date}\n\n${newSections}`;
-    const encoded = btoa(unescape(encodeURIComponent(finalContent)));
+    const encoded = btoa(
+      String.fromCharCode(...new TextEncoder().encode(finalContent))
+    );
 
     const body: any = {
       message: sha ? `Update ${date}` : `Add ${date}`,
@@ -1534,11 +1583,84 @@ export class UserDO extends DurableObject<Env> {
     };
     if (sha) body.sha = sha;
 
-    const res = await fetch(apiUrl, {
+    let res = await fetch(apiUrl, {
       method: "PUT",
       headers: { ...ghHeaders, "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
+
+    // 409 means our SHA is stale (e.g. a previous retry already wrote the file).
+    // Re-fetch the current SHA and retry once.
+    if (res.status === 409) {
+      const refetch = await fetch(apiUrl, { headers: ghHeaders });
+      if (refetch.status === 200) {
+        const refetchData = (await refetch.json()) as {
+          sha: string;
+          content: string;
+        };
+        body.sha = refetchData.sha;
+        // Merge: skip tweets already in the file on GitHub
+        const currentContent = new TextDecoder().decode(
+          Uint8Array.from(atob(refetchData.content.replace(/\s/g, "")), (c) =>
+            c.charCodeAt(0)
+          )
+        );
+        const stillMissing = tweetsToAdd.filter(
+          (t) => !currentContent.includes(`<!-- tweet-id: ${t.id} -->`)
+        );
+        if (stillMissing.length === 0) return;
+        const mergedContent =
+          currentContent +
+          "\n" +
+          stillMissing
+            .map((tweet) => {
+              const author = authorMap[tweet.author_id];
+              const quotedRef = tweet.referenced_tweets?.find(
+                (r: any) => r.type === "quoted"
+              );
+              const quotedTweet = quotedRef
+                ? quotedMap[quotedRef.id]
+                : undefined;
+              const quotedAuthor = quotedTweet
+                ? authorMap[quotedTweet.author_id]
+                : undefined;
+              const repliedToRef = tweet.referenced_tweets?.find(
+                (r: any) => r.type === "replied_to"
+              );
+              const repliedToInSameConv = repliedToRef
+                ? newTweets.some((t) => t.id === repliedToRef.id) ||
+                  currentContent.includes(
+                    `<!-- tweet-id: ${repliedToRef.id} -->`
+                  )
+                : false;
+              const repliedToTweet =
+                repliedToRef && !repliedToInSameConv
+                  ? quotedMap[repliedToRef.id]
+                  : undefined;
+              const repliedToAuthor = repliedToTweet
+                ? authorMap[repliedToTweet.author_id]
+                : undefined;
+              return this.tweetSection(
+                tweet,
+                author,
+                quotedTweet,
+                quotedAuthor,
+                repliedToTweet,
+                repliedToAuthor
+              );
+            })
+            .join("\n");
+        body.content = btoa(
+          String.fromCharCode(...new TextEncoder().encode(mergedContent))
+        );
+        res = await fetch(apiUrl, {
+          method: "PUT",
+          headers: { ...ghHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      }
+    }
+
     if (!res.ok && res.status !== 422) {
       throw new Error(`GitHub write failed: ${res.status} ${await res.text()}`);
     }
