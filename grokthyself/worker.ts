@@ -4,7 +4,8 @@ import Stripe from "stripe";
 import {
   studioMiddleware,
   Queryable,
-  QueryableHandler
+  QueryableHandler,
+  RawFn
 } from "queryable-object";
 
 const GLOBAL_DO_NAME = "__global99__";
@@ -218,11 +219,7 @@ async function getAuthFromRequest(
   return null;
 }
 
-function getUserDO(env: Env, xUserId: string): DurableObjectStub<UserDO> {
-  return env.USER_DO.get(env.USER_DO.idFromName(xUserId));
-}
-
-function getRegistry(env: Env): DurableObjectStub<UserDO> {
+function getRegistry(env: Env): DurableObjectStub<UserDO & { raw: RawFn }> {
   return env.USER_DO.get(env.USER_DO.idFromName(GLOBAL_DO_NAME));
 }
 
@@ -337,7 +334,7 @@ export default {
       const meData = (await meRes.json()) as any;
       const xUser = meData.data;
 
-      const stub = getUserDO(env, xUser.id);
+      const stub = getRegistry(env);
       await stub.setXAuth({
         userId: xUser.id,
         username: xUser.username,
@@ -440,8 +437,8 @@ export default {
       // Use the first repo as the target. User was told to scope to one repo.
       const targetRepo = reposData.repositories[0];
 
-      const stub = getUserDO(env, state);
-      await stub.setGitHubInstall({
+      const stub = getRegistry(env);
+      await stub.setGitHubInstall(state, {
         installationId: parseInt(installationId),
         owner: targetRepo.owner.login,
         repo: targetRepo.name,
@@ -491,12 +488,11 @@ export default {
       if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.payment_status === "paid" && session.client_reference_id) {
-          const stub = getUserDO(env, session.client_reference_id);
-          await stub.activateSubscription(
+          await registry.activateSubscription(
+            session.client_reference_id,
             session.customer as string,
             session.subscription as string
           );
-          await registry.setSubscribed(session.client_reference_id, 1);
         }
       }
 
@@ -509,9 +505,7 @@ export default {
           obj.metadata?.x_user_id ||
           obj.subscription_details?.metadata?.x_user_id;
         if (xUserId) {
-          const stub = getUserDO(env, xUserId);
-          await stub.deactivateSubscription();
-          await registry.setSubscribed(xUserId, 0);
+          await registry.deactivateSubscription(xUserId);
         }
       }
 
@@ -548,8 +542,7 @@ export default {
       const auth = await getAuthFromRequest(request, env);
       if (!auth)
         return Response.json({ error: "Unauthorized" }, { status: 401 });
-      const stub = getUserDO(env, auth.sub);
-      return Response.json(await stub.getStatus());
+      return Response.json(await getRegistry(env).getStatus(auth.sub));
     }
 
     // ── API: set folder ──
@@ -558,8 +551,7 @@ export default {
       if (!auth)
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       const body = (await request.json()) as { folder?: string };
-      const stub = getUserDO(env, auth.sub);
-      await stub.setFolder(body.folder || "");
+      await getRegistry(env).setFolder(auth.sub, body.folder || "");
       return Response.json({ ok: true });
     }
 
@@ -568,6 +560,13 @@ export default {
       const auth = await getAuthFromRequest(request, env);
       if (!auth)
         return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const registry = getRegistry(env);
+      const alreadyQueued = await registry.setSyncQueued(auth.sub);
+      if (alreadyQueued)
+        return Response.json(
+          { ok: false, reason: "already_queued" },
+          { status: 409 }
+        );
       await env.SYNC_QUEUE.send({ userId: auth.sub });
       return Response.json({ ok: true, queued: true });
     }
@@ -581,8 +580,7 @@ export default {
           headers: { Location: "/auth/x/login" }
         });
       }
-      const stub = getUserDO(env, auth.sub);
-      const status = await stub.getStatus();
+      const status = await getRegistry(env).getStatus(auth.sub);
       return new Response(renderDashboard(status, env), {
         headers: { "Content-Type": "text/html; charset=utf-8" }
       });
@@ -594,8 +592,7 @@ export default {
       if (!auth || auth.username !== "janwilmake") {
         return new Response("Forbidden", { status: 403 });
       }
-      const stub = getUserDO(env, auth.sub);
-      return studioMiddleware(request, stub.raw, {
+      return studioMiddleware(request, getRegistry(env).raw, {
         dangerouslyDisableAuth: true
       });
     }
@@ -617,11 +614,12 @@ export default {
   },
 
   // ── Queue consumer: sync one user ──
-  async queue(batch: MessageBatch<SyncJob>, env: Env, ctx: ExecutionContext) {
-    for (const msg of batch.messages) {
+  async queue(batch, env: Env) {
+    const syncJobBatch = batch as MessageBatch<SyncJob>;
+
+    for (const msg of syncJobBatch.messages) {
       try {
-        const stub = getUserDO(env, msg.body.userId);
-        await stub.runSync();
+        await getRegistry(env).runSync(msg.body.userId);
         msg.ack();
       } catch (e) {
         console.error(`Sync failed for ${msg.body.userId}:`, e);
@@ -687,10 +685,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;ba
 .c{max-width:640px;margin:0 auto;padding:40px 24px 80px}
 .btn{display:inline-block;padding:10px 20px;border-radius:980px;background:#fff;color:#000;text-decoration:none;font-size:14px;font-weight:500;border:none;cursor:pointer}
 .btn-sec{background:rgba(255,255,255,.1);color:#fff}
+.btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
 input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.2);color:#fff;padding:8px 12px;border-radius:8px;font-size:14px;width:240px}
 code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:13px}
 .logo{width:64px;height:64px;object-fit:contain;animation:float 3.5s ease-in-out infinite;flex-shrink:0}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hero-eyebrow{font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:6px}
 .hero-h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;line-height:1.1;margin-bottom:4px}
 .hero-h1 em{font-style:normal;color:#666}
@@ -767,14 +767,17 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
 
   ${
     status.subscribed && status.githubConnected
-      ? `<div style="background:rgba(255,255,255,.05);border-radius:16px;padding:24px;margin-top:24px">
+      ? `<div style="background:rgba(255,255,255,.05);border-radius:16px;padding:24px;margin-top:24px" id="sync-card">
            <div style="font-size:15px;margin-bottom:8px"><strong>Sync status</strong></div>
-           <div style="color:#888;font-size:13px;line-height:1.7">
-             Last posts sync: ${status.lastPostsSyncAt ? new Date(status.lastPostsSyncAt).toLocaleString() : "never"}<br>
-             Last bookmarks sync: ${status.lastBookmarksSyncAt ? new Date(status.lastBookmarksSyncAt).toLocaleString() : "never"}<br>
-             ${status.lastError ? `<span style="color:#ff6b6b">Last error: ${status.lastError}</span>` : ""}
+           <div style="color:#888;font-size:13px;line-height:1.7" id="sync-times"
+             data-posts="${status.lastPostsSyncAt || ""}"
+             data-bookmarks="${status.lastBookmarksSyncAt || ""}"
+             data-error="${status.lastError || ""}">
            </div>
-           <button class="btn btn-sec" style="margin-top:16px" onclick="syncNow()">Sync now</button>
+           <div id="sync-loading" style="display:none;margin-top:14px;color:#888;font-size:13px">
+             <span style="display:inline-block;width:12px;height:12px;border:2px solid #555;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></span>Syncing…
+           </div>
+           <button id="sync-btn" class="btn btn-sec" style="margin-top:16px" onclick="syncNow()" ${status.syncQueued ? "disabled" : ""}>Sync now</button>
          </div>`
       : ""
   }
@@ -837,10 +840,63 @@ async function saveFolder(){
   await fetch('/api/set-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:f})});
   location.reload();
 }
-async function syncNow(){
-  await fetch('/api/sync-now',{method:'POST'});
-  alert('Queued. Refresh in a minute.');
+
+const FMT={timeZoneName:'short'};
+function fmtDate(ms){return ms?new Date(ms).toLocaleString(undefined,FMT):'never';}
+function renderSyncTimes(postsAt,bookmarksAt,error){
+  const el=document.getElementById('sync-times');
+  if(!el)return;
+  el.innerHTML='Last posts sync: '+fmtDate(postsAt)+'<br>Last bookmarks sync: '+fmtDate(bookmarksAt)+
+    (error?'<br><span style="color:#ff6b6b">Last error: '+error+'</span>':'');
 }
+
+let _polling=false;
+function setSyncing(on){
+  const btn=document.getElementById('sync-btn');
+  const loading=document.getElementById('sync-loading');
+  if(!btn||!loading)return;
+  if(on){btn.disabled=true;loading.style.display='block';}
+  else{btn.disabled=false;loading.style.display='none';}
+}
+function startPolling(){
+  if(_polling)return;
+  _polling=true;
+  setSyncing(true);
+  const interval=setInterval(async()=>{
+    try{
+      const r=await fetch('/api/status');
+      const d=await r.json();
+      if(!d.syncQueued){
+        clearInterval(interval);
+        _polling=false;
+        setSyncing(false);
+        renderSyncTimes(d.lastPostsSyncAt,d.lastBookmarksSyncAt,d.lastError);
+      }
+    }catch(e){}
+  },3000);
+}
+
+// Format initial timestamps client-side
+document.addEventListener('DOMContentLoaded',function(){
+  const el=document.getElementById('sync-times');
+  if(!el)return;
+  renderSyncTimes(Number(el.dataset.posts)||null,Number(el.dataset.bookmarks)||null,el.dataset.error||null);
+});
+async function syncNow(){
+  setSyncing(true);
+  const r=await fetch('/api/sync-now',{method:'POST'});
+  const d=await r.json();
+  if(d.ok||d.reason==='already_queued'){startPolling();}
+  else{setSyncing(false);}
+}
+
+// Auto-trigger first sync
+(function(){
+  const queued=${status.subscribed && status.githubConnected ? String(status.syncQueued) : "false"};
+  const neverSynced=${status.subscribed && status.githubConnected ? String(!status.lastPostsSyncAt && !status.lastBookmarksSyncAt) : "false"};
+  if(queued){startPolling();}
+  else if(neverSynced){syncNow();}
+})();
 </script>
 </body></html>`;
 }
@@ -859,6 +915,7 @@ interface UserStatus {
     folder: string;
   } | null;
   subscribed: boolean;
+  syncQueued: boolean;
   lastPostsSyncAt: number | null;
   lastBookmarksSyncAt: number | null;
   lastError: string | null;
@@ -909,7 +966,8 @@ export class UserDO extends DurableObject<Env> {
       ["last_bookmarks_sync_at", "INTEGER"],
       ["last_posts_since_id", "TEXT"],
       ["last_bookmarks_since_id", "TEXT"],
-      ["last_error", "TEXT"]
+      ["last_error", "TEXT"],
+      ["sync_queued", "INTEGER DEFAULT 0"]
     ];
     for (const [col, type] of additions) {
       if (!existing.has(col)) {
@@ -918,27 +976,11 @@ export class UserDO extends DurableObject<Env> {
     }
   }
 
-  private row(): any {
-    return this.sql.exec("SELECT * FROM users LIMIT 1").toArray()[0] ?? null;
-  }
-
-  // ── Registry methods (called only on GLOBAL DO) ──
-
-  async registerUser(userId: string, username: string) {
-    this.sql.exec(
-      `INSERT INTO users (user_id, username, created_at) VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET username=excluded.username`,
-      userId,
-      username,
-      Date.now()
-    );
-  }
-
-  async setSubscribed(userId: string, subscribed: number) {
-    this.sql.exec(
-      `UPDATE users SET subscribed=? WHERE user_id=?`,
-      subscribed,
-      userId
+  private row(userId: string): any {
+    return (
+      this.sql
+        .exec("SELECT * FROM users WHERE user_id=? LIMIT 1", userId)
+        .toArray()[0] ?? null
     );
   }
 
@@ -978,52 +1020,66 @@ export class UserDO extends DurableObject<Env> {
       data.expiresAt,
       Date.now()
     );
-    const registry = this.env.USER_DO.get(
-      this.env.USER_DO.idFromName(GLOBAL_DO_NAME)
-    );
-    await registry.registerUser(data.userId, data.username);
   }
 
-  async setGitHubInstall(data: {
-    installationId: number;
-    owner: string;
-    repo: string;
-    folder: string;
-  }) {
+  async setGitHubInstall(
+    userId: string,
+    data: {
+      installationId: number;
+      owner: string;
+      repo: string;
+      folder: string;
+    }
+  ) {
     this.sql.exec(
-      `UPDATE users SET gh_installation_id=?, gh_owner=?, gh_repo=?, gh_folder=?
-       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      `UPDATE users SET gh_installation_id=?, gh_owner=?, gh_repo=?, gh_folder=? WHERE user_id=?`,
       data.installationId,
       data.owner,
       data.repo,
-      data.folder
+      data.folder,
+      userId
     );
   }
 
-  async setFolder(folder: string) {
+  async setFolder(userId: string, folder: string) {
     this.sql.exec(
-      `UPDATE users SET gh_folder=? WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
-      folder
+      `UPDATE users SET gh_folder=? WHERE user_id=?`,
+      folder,
+      userId
     );
   }
 
-  async activateSubscription(stripeCustomerId: string, subscriptionId: string) {
+  /** Returns true if already queued (caller should reject), false if successfully marked queued. */
+  async setSyncQueued(userId: string): Promise<boolean> {
+    const u = this.row(userId);
+    if (u?.sync_queued === 1) return true;
+    this.sql.exec(`UPDATE users SET sync_queued=1 WHERE user_id=?`, userId);
+    return false;
+  }
+
+  private clearSyncQueued(userId: string) {
+    this.sql.exec(`UPDATE users SET sync_queued=0 WHERE user_id=?`, userId);
+  }
+
+  async activateSubscription(
+    userId: string,
+    stripeCustomerId: string,
+    subscriptionId: string
+  ) {
     this.sql.exec(
-      `UPDATE users SET subscribed=1, stripe_customer_id=?, stripe_subscription_id=?
-       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      `UPDATE users SET subscribed=1, stripe_customer_id=?, stripe_subscription_id=? WHERE user_id=?`,
       stripeCustomerId,
-      subscriptionId
+      subscriptionId,
+      userId
     );
   }
 
-  async deactivateSubscription() {
-    this.sql.exec(
-      `UPDATE users SET subscribed=0 WHERE user_id=(SELECT user_id FROM users LIMIT 1)`
-    );
+  async deactivateSubscription(userId: string) {
+    this.sql.exec(`UPDATE users SET subscribed=0 WHERE user_id=?`, userId);
   }
 
-  async getStatus(): Promise<UserStatus> {
-    const u = this.row();
+  async getStatus(userId: string): Promise<UserStatus> {
+    const u = this.row(userId);
     return {
       xUser: u?.username
         ? {
@@ -1042,6 +1098,7 @@ export class UserDO extends DurableObject<Env> {
           }
         : null,
       subscribed: u?.subscribed === 1,
+      syncQueued: u?.sync_queued === 1,
       lastPostsSyncAt: u?.last_posts_sync_at || null,
       lastBookmarksSyncAt: u?.last_bookmarks_sync_at || null,
       lastError: u?.last_error || null
@@ -1050,8 +1107,8 @@ export class UserDO extends DurableObject<Env> {
 
   // ── X token refresh ──
 
-  private async getValidXToken(): Promise<string | null> {
-    const u = this.row();
+  private async getValidXToken(userId: string): Promise<string | null> {
+    const u = this.row(userId);
     if (!u) return null;
     if (Date.now() < (u.x_expires_at || 0) - 60_000) return u.x_access_token;
     if (!u.x_refresh_token) return null;
@@ -1075,23 +1132,23 @@ export class UserDO extends DurableObject<Env> {
       expires_in?: number;
     };
     this.sql.exec(
-      `UPDATE users SET x_access_token=?, x_refresh_token=?, x_expires_at=?
-       WHERE user_id=(SELECT user_id FROM users LIMIT 1)`,
+      `UPDATE users SET x_access_token=?, x_refresh_token=?, x_expires_at=? WHERE user_id=?`,
       tokens.access_token,
       tokens.refresh_token || u.x_refresh_token,
-      Date.now() + (tokens.expires_in || 7200) * 1000
+      Date.now() + (tokens.expires_in || 7200) * 1000,
+      userId
     );
     return tokens.access_token;
   }
 
   // ── Main sync entry ──
 
-  async runSync() {
+  async runSync(userId: string) {
     try {
-      const u = this.row();
-      if (!u?.subscribed || !u?.gh_installation_id || !u?.user_id) return;
+      const u = this.row(userId);
+      if (!u?.subscribed || !u?.gh_installation_id) return;
 
-      const accessToken = await this.getValidXToken();
+      const accessToken = await this.getValidXToken(userId);
       if (!accessToken) throw new Error("Could not get valid X token");
 
       const install = {
@@ -1135,14 +1192,14 @@ export class UserDO extends DurableObject<Env> {
         u.user_id
       );
     } catch (e: any) {
-      const u = this.row();
-      if (u?.user_id)
-        this.sql.exec(
-          `UPDATE users SET last_error=? WHERE user_id=?`,
-          String(e?.message || e),
-          u.user_id
-        );
+      this.sql.exec(
+        `UPDATE users SET last_error=? WHERE user_id=?`,
+        String(e?.message || e),
+        userId
+      );
       throw e;
+    } finally {
+      this.clearSyncQueued(userId);
     }
   }
 
