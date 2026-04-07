@@ -19,7 +19,7 @@
     ]
   },
   "triggers": { "crons": ["0 2 * * *"] },
-  "assets": { "directory": "./public" },
+  "assets": { "directory": "./public", "binding": "ASSETS" },
   "routes": [
     { "custom_domain": true, "pattern": "grokthyself.com" },
     { "custom_domain": true, "pattern": "www.grokthyself.com" }

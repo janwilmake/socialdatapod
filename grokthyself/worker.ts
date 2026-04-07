@@ -14,6 +14,7 @@ const GLOBAL_DO_NAME = "__global99__";
 // ============================================================================
 
 export interface Env {
+  ASSETS: Fetcher;
   USER_DO: DurableObjectNamespace<UserDO & QueryableHandler>;
   SYNC_QUEUE: Queue<SyncJob>;
   X_CLIENT_ID: string;
@@ -230,6 +231,13 @@ function getRegistry(env: Env): DurableObjectStub<UserDO & { raw: RawFn }> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Redirect www to apex
+    if (url.hostname === "www.grokthyself.com") {
+      url.hostname = "grokthyself.com";
+      return Response.redirect(url.toString(), 301);
+    }
+
     const path = url.pathname;
     const secure = secureCookieFlags(url);
 
@@ -617,6 +625,28 @@ export default {
       });
     }
 
+    // ── Blog index ──
+    if (path === "/blog") {
+      return new Response(renderBlogIndex(), {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // ── Blog post ──
+    if (path.startsWith("/blog/")) {
+      const slug = path.slice(6).replace(/\/$/, "");
+      const meta = BLOG_POSTS.find((p) => p.slug === slug);
+      if (!meta) return new Response("Not Found", { status: 404 });
+      const assetRes = await env.ASSETS.fetch(
+        new Request(`${url.origin}/blog/${slug}.md`)
+      );
+      if (!assetRes.ok) return new Response("Not Found", { status: 404 });
+      const markdown = await assetRes.text();
+      return new Response(renderBlogPost(meta, markdown), {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
     return new Response("Not Found", { status: 404 });
   },
 
@@ -650,14 +680,275 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 // ============================================================================
+// Blog metadata (content lives in /public/blog/*.md, fetched via env.ASSETS)
+// ============================================================================
+
+interface BlogPost {
+  slug: string;
+  title: string;
+  description: string;
+  published: string;
+}
+
+const BLOG_POSTS: BlogPost[] = [
+  {
+    slug: "twitter-bookmarks-backup",
+    title: "How to Back Up Your Twitter Bookmarks (Before You Lose Them)",
+    description:
+      "Twitter bookmarks can't be exported natively. Here's why that's a problem — and the easiest ways to back them up automatically.",
+    published: "2026-04-07"
+  },
+  {
+    slug: "what-happens-tweets-when-banned",
+    title: "What Happens to Your Tweets When You Get Banned From X?",
+    description:
+      "A Twitter/X ban doesn't just lock you out — it can delete everything you've ever posted. Here's exactly what happens and how to protect your content.",
+    published: "2026-04-14"
+  },
+  {
+    slug: "github-personal-knowledge-base",
+    title: "Why GitHub Is the Best Personal Knowledge Base You're Not Using",
+    description:
+      "GitHub isn't just for code. Developers and non-developers alike are using private GitHub repos as a personal knowledge base — searchable, versioned, and portable forever.",
+    published: "2026-04-21"
+  },
+  {
+    slug: "twitter-archive-vs-continuous-backup",
+    title: "Twitter's Official Archive vs. Continuous Backup: What's the Difference?",
+    description:
+      "X lets you download your data archive, but it's not a backup. Here's the difference between a one-time archive and a continuous backup — and why it matters.",
+    published: "2026-04-28"
+  },
+  {
+    slug: "own-your-social-media-data",
+    title: "You Don't Own Your Social Media Data. Here's How to Change That.",
+    description:
+      "Your tweets, likes, and bookmarks live on someone else's servers. Why personal data ownership matters and what you can actually do about it.",
+    published: "2026-05-05"
+  }
+];
+
+// ============================================================================
+// Markdown renderer (subset: headings, bold, italic, code, links, lists, tables, hr)
+// ============================================================================
+
+function renderMarkdown(md: string): string {
+  // Strip YAML frontmatter
+  const body = md.replace(/^---[\s\S]*?---\n?/, "").trim();
+
+  const lines = body.split("\n");
+  const html: string[] = [];
+  let i = 0;
+
+  const escHtml = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const inline = (s: string): string =>
+    escHtml(s)
+      // Bold + italic
+      .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
+      // Bold
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      // Italic
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      // Inline code
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      // Links
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Headings
+    const hMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      html.push(`<h${level}>${inline(hMatch[2])}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // HR
+    if (/^---+$/.test(line.trim())) {
+      html.push("<hr>");
+      i++;
+      continue;
+    }
+
+    // Fenced code block
+    if (line.startsWith("```")) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(escHtml(lines[i]));
+        i++;
+      }
+      html.push(`<pre><code>${codeLines.join("\n")}</code></pre>`);
+      i++;
+      continue;
+    }
+
+    // Table (detect by |)
+    if (line.includes("|") && lines[i + 1]?.includes("---")) {
+      const headers = line
+        .split("|")
+        .filter((c) => c.trim())
+        .map((c) => `<th>${inline(c.trim())}</th>`)
+        .join("");
+      html.push(`<table><thead><tr>${headers}</tr></thead><tbody>`);
+      i += 2; // skip separator row
+      while (i < lines.length && lines[i].includes("|")) {
+        const cells = lines[i]
+          .split("|")
+          .filter((c) => c.trim())
+          .map((c) => `<td>${inline(c.trim())}</td>`)
+          .join("");
+        html.push(`<tr>${cells}</tr>`);
+        i++;
+      }
+      html.push("</tbody></table>");
+      continue;
+    }
+
+    // Unordered list
+    if (/^[-*]\s/.test(line)) {
+      html.push("<ul>");
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        html.push(`<li>${inline(lines[i].slice(2))}</li>`);
+        i++;
+      }
+      html.push("</ul>");
+      continue;
+    }
+
+    // Empty line
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Paragraph — collect consecutive non-blank, non-special lines
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^#{1,3}\s/.test(lines[i]) &&
+      !/^[-*]\s/.test(lines[i]) &&
+      !/^```/.test(lines[i]) &&
+      !lines[i].includes("|")
+    ) {
+      paraLines.push(inline(lines[i]));
+      i++;
+    }
+    if (paraLines.length) html.push(`<p>${paraLines.join(" ")}</p>`);
+  }
+
+  return html.join("\n");
+}
+
+// ============================================================================
 // HTML renderers
 // ============================================================================
+
+const BLOG_CSS = `
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#e8e8e8;line-height:1.7}
+a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+a:hover{opacity:.75}
+nav{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.07);max-width:780px;margin:0 auto}
+nav a{text-decoration:none;font-size:14px;color:#666}
+nav a:first-child{font-weight:600;color:#fff;font-size:15px}
+.container{max-width:700px;margin:0 auto;padding:60px 24px 100px}
+h1{font-size:clamp(26px,5vw,40px);font-weight:700;letter-spacing:-1px;line-height:1.15;color:#fff;margin-bottom:16px}
+h2{font-size:22px;font-weight:600;color:#fff;margin:40px 0 12px}
+h3{font-size:17px;font-weight:600;color:#ddd;margin:28px 0 8px}
+p{color:#aaa;margin-bottom:16px;font-size:16px}
+ul{margin:0 0 16px 22px;color:#aaa;font-size:16px}
+li{margin-bottom:6px}
+code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:14px;font-family:ui-monospace,monospace;color:#e0e0e0}
+pre{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:20px;overflow-x:auto;margin:20px 0}
+pre code{background:none;padding:0;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:24px 0;font-size:14px}
+th{text-align:left;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.07);color:#aaa}
+hr{border:none;border-top:1px solid rgba(255,255,255,.1);margin:40px 0}
+.post-meta{font-size:13px;color:#555;margin-bottom:40px}
+.cta{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;margin-top:56px;text-align:center}
+.cta p{margin:0 0 20px;color:#888}
+.cta a.btn{display:inline-block;padding:12px 28px;background:#fff;color:#000;border-radius:980px;font-weight:600;font-size:15px;text-decoration:none}
+.cta a.btn:hover{opacity:.85}
+.post-card{border-bottom:1px solid rgba(255,255,255,.07);padding:28px 0}
+.post-card:first-child{padding-top:0}
+.post-card h2{font-size:19px;margin:0 0 8px}
+.post-card h2 a{text-decoration:none;color:#fff}
+.post-card h2 a:hover{text-decoration:underline}
+.post-card p{font-size:14px;color:#666;margin:0 0 10px}
+.post-card .date{font-size:12px;color:#444}
+.hero{padding:56px 0 40px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:40px}
+.hero .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin-bottom:12px}
+`;
+
+function renderBlogIndex(): string {
+  const cards = BLOG_POSTS.map(
+    (p) => `
+    <div class="post-card">
+      <h2><a href="/blog/${p.slug}">${p.title}</a></h2>
+      <p>${p.description}</p>
+      <span class="date">${p.published}</span>
+    </div>`
+  ).join("");
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blog — GrokThyself</title>
+<meta name="description" content="Guides on backing up your X data, owning your social media content, and using GitHub as a personal knowledge base.">
+<style>${BLOG_CSS}</style>
+</head><body>
+<nav><a href="/">GrokThyself</a><a href="/blog">Blog</a></nav>
+<div class="container">
+  <div class="hero">
+    <div class="eyebrow">Blog</div>
+    <h1>Own your data.<br>Know yourself.</h1>
+    <p style="color:#666;font-size:16px;margin:0">Guides on backing up your X tweets, bookmarks, and likes — and why it matters.</p>
+  </div>
+  ${cards}
+</div>
+</body></html>`;
+}
+
+function renderBlogPost(meta: BlogPost, markdown: string): string {
+  const content = renderMarkdown(markdown);
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${meta.title} — GrokThyself</title>
+<meta name="description" content="${meta.description}">
+<meta property="og:title" content="${meta.title}">
+<meta property="og:description" content="${meta.description}">
+<meta property="og:type" content="article">
+<style>${BLOG_CSS}</style>
+</head><body>
+<nav><a href="/">GrokThyself</a><a href="/blog">Blog</a></nav>
+<div class="container">
+  <p class="post-meta"><a href="/blog" style="color:#555;text-decoration:none">← Blog</a> &nbsp;·&nbsp; ${meta.published}</p>
+  ${content}
+  <div class="cta">
+    <p>GrokThyself backs up your X tweets, bookmarks, and likes to a private GitHub repo — automatically.</p>
+    <a class="btn" href="/">Get started for $8/month</a>
+  </div>
+</div>
+</body></html>`;
+}
 
 function renderLanding(): string {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Thyself</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center}
+nav{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid rgba(255,255,255,.07)}
+nav .brand{font-size:15px;font-weight:600;color:#fff;text-decoration:none}
+nav a{font-size:14px;color:#666;text-decoration:none}
+nav a:hover{color:#fff}
+nav .nav-links{display:flex;gap:24px;align-items:center}
 .logo{width:100px;height:100px;object-fit:contain;animation:float 3.5s ease-in-out infinite;margin-bottom:32px}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
 .eyebrow{font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:16px}
@@ -670,6 +961,13 @@ a.btn:hover{opacity:.85}
 .price{margin-top:20px;font-size:13px;color:#444}
 </style>
 </head><body>
+<nav>
+  <a class="brand" href="/">GrokThyself</a>
+  <div class="nav-links">
+    <a href="/blog">Blog</a>
+    <a href="/auth/x/login">Sign in</a>
+  </div>
+</nav>
 <img class="logo" src="/socrates.png" alt="Socrates">
 <p class="eyebrow">Personal knowledge base</p>
 <h1>Your X data,<br><em>your knowledge.</em></h1>
