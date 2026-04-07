@@ -642,7 +642,7 @@ export default {
       );
       if (!assetRes.ok) return new Response("Not Found", { status: 404 });
       const markdown = await assetRes.text();
-      return new Response(renderBlogPost(meta, markdown), {
+      return new Response(renderBlogPost(meta, markdown, url), {
         headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
@@ -707,9 +707,9 @@ const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: "github-personal-knowledge-base",
-    title: "Why GitHub Is the Best Personal Knowledge Base You're Not Using",
+    title: "The LLM Wiki: A Personal Knowledge Base That Actually Stays Current",
     description:
-      "GitHub isn't just for code. Developers and non-developers alike are using private GitHub repos as a personal knowledge base — searchable, versioned, and portable forever.",
+      "Most personal knowledge bases fail because the maintenance burden outpaces the value. The LLM wiki pattern — where an AI maintains structured markdown files from your raw sources — changes that equation permanently.",
     published: "2026-04-21"
   },
   {
@@ -916,15 +916,18 @@ function renderBlogIndex(): string {
 </body></html>`;
 }
 
-function renderBlogPost(meta: BlogPost, markdown: string): string {
+function renderBlogPost(meta: BlogPost, markdown: string, requestUrl: URL): string {
+  const canonicalUrl = `${requestUrl.origin}/blog/${meta.slug}`;
   const content = renderMarkdown(markdown);
   return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${meta.title} — GrokThyself</title>
 <meta name="description" content="${meta.description}">
+<link rel="canonical" href="${canonicalUrl}">
 <meta property="og:title" content="${meta.title}">
 <meta property="og:description" content="${meta.description}">
 <meta property="og:type" content="article">
+<meta property="og:url" content="${canonicalUrl}">
 <style>${BLOG_CSS}</style>
 </head><body>
 <nav><a href="/">GrokThyself</a><a href="/blog">Blog</a></nav>
