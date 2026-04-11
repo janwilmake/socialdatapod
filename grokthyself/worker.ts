@@ -268,7 +268,7 @@ export default {
       authUrl.searchParams.set("redirect_uri", redirect_uri);
       authUrl.searchParams.set(
         "scope",
-        "bookmark.read tweet.read users.read offline.access"
+        "bookmark.read tweet.read users.read like.read offline.access"
       );
       authUrl.searchParams.set("state", state);
       authUrl.searchParams.set("code_challenge", codeChallenge);
@@ -707,14 +707,16 @@ const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: "github-personal-knowledge-base",
-    title: "The LLM Wiki: A Personal Knowledge Base That Actually Stays Current",
+    title:
+      "The LLM Wiki: A Personal Knowledge Base That Actually Stays Current",
     description:
       "Most personal knowledge bases fail because the maintenance burden outpaces the value. The LLM wiki pattern — where an AI maintains structured markdown files from your raw sources — changes that equation permanently.",
     published: "2026-04-21"
   },
   {
     slug: "twitter-archive-vs-continuous-backup",
-    title: "Twitter's Official Archive vs. Continuous Backup: What's the Difference?",
+    title:
+      "Twitter's Official Archive vs. Continuous Backup: What's the Difference?",
     description:
       "X lets you download your data archive, but it's not a backup. Here's the difference between a one-time archive and a continuous backup — and why it matters.",
     published: "2026-04-28"
@@ -916,7 +918,11 @@ function renderBlogIndex(): string {
 </body></html>`;
 }
 
-function renderBlogPost(meta: BlogPost, markdown: string, requestUrl: URL): string {
+function renderBlogPost(
+  meta: BlogPost,
+  markdown: string,
+  requestUrl: URL
+): string {
   const canonicalUrl = `${requestUrl.origin}/blog/${meta.slug}`;
   const content = renderMarkdown(markdown);
   return `<!DOCTYPE html><html lang="en"><head>
@@ -974,7 +980,7 @@ a.btn:hover{opacity:.85}
 <img class="logo" src="/socrates.png" alt="Socrates">
 <p class="eyebrow">Personal knowledge base</p>
 <h1>Your X data,<br><em>your knowledge.</em></h1>
-<p class="sub">Bookmarks and posts, synced daily<br>to a private GitHub repo.</p>
+<p class="sub">Posts, bookmarks &amp; likes, synced daily<br>to a private GitHub repo.</p>
 <a class="btn" href="/auth/x/login">Sign in with X</a>
 <p class="price">$8 / month &nbsp;·&nbsp; Cancel anytime</p>
 </body></html>`;
@@ -1041,7 +1047,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
       <div>
         <div class="hero-eyebrow">Personal knowledge base</div>
         <div class="hero-h1">Your X data,<br><em>your knowledge.</em></div>
-        <div class="hero-sub">Bookmarks and posts, synced daily<br>to a private GitHub repo.</div>
+        <div class="hero-sub">Posts, bookmarks &amp; likes, synced daily<br>to a private GitHub repo.</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;padding-top:4px;flex-shrink:0">
@@ -1086,7 +1092,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
           3,
           !!status.github?.folder || status.github?.folder === "",
           "Choose target folder (optional)",
-          `Defaults to repo root. Posts go to <code>{folder}/x-posts/{date}.md</code>, bookmarks to <code>{folder}/x-bookmarks/{date}.md</code>.<br>
+          `Defaults to repo root. Posts → <code>x-posts/</code>, bookmarks → <code>x-bookmarks/</code>, likes → <code>x-likes/</code>.<br>
            <div style="margin-top:12px"><input id="folder" type="text" placeholder="(root)" value="${
              status.github?.folder || ""
            }"><button class="btn btn-sec" style="margin-left:8px" onclick="saveFolder()">Save</button></div>`
@@ -1110,6 +1116,7 @@ code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-siz
            <div style="color:#888;font-size:13px;line-height:1.7" id="sync-times"
              data-posts="${status.lastPostsSyncAt || ""}"
              data-bookmarks="${status.lastBookmarksSyncAt || ""}"
+             data-likes="${status.lastLikesSyncAt || ""}"
              data-error="${status.lastError || ""}">
            </div>
            <div id="sync-loading" style="display:none;margin-top:14px;color:#888;font-size:13px">
@@ -1186,10 +1193,11 @@ async function saveFolder(){
 
 const FMT={timeZoneName:'short'};
 function fmtDate(ms){return ms?new Date(ms).toLocaleString(undefined,FMT):'never';}
-function renderSyncTimes(postsAt,bookmarksAt,error){
+function renderSyncTimes(postsAt,bookmarksAt,likesAt,error){
   const el=document.getElementById('sync-times');
   if(!el)return;
   el.innerHTML='Last posts sync: '+fmtDate(postsAt)+'<br>Last bookmarks sync: '+fmtDate(bookmarksAt)+
+    '<br>Last likes sync: '+fmtDate(likesAt)+
     (error?'<br><span style="color:#ff6b6b">Last error: '+error+'</span>':'');
 }
 
@@ -1213,7 +1221,7 @@ function startPolling(){
         clearInterval(interval);
         _polling=false;
         setSyncing(false);
-        renderSyncTimes(d.lastPostsSyncAt,d.lastBookmarksSyncAt,d.lastError);
+        renderSyncTimes(d.lastPostsSyncAt,d.lastBookmarksSyncAt,d.lastLikesSyncAt,d.lastError);
       }
     }catch(e){}
   },3000);
@@ -1223,7 +1231,7 @@ function startPolling(){
 document.addEventListener('DOMContentLoaded',function(){
   const el=document.getElementById('sync-times');
   if(!el)return;
-  renderSyncTimes(Number(el.dataset.posts)||null,Number(el.dataset.bookmarks)||null,el.dataset.error||null);
+  renderSyncTimes(Number(el.dataset.posts)||null,Number(el.dataset.bookmarks)||null,Number(el.dataset.likes)||null,el.dataset.error||null);
 });
 async function syncNow(){
   setSyncing(true);
@@ -1236,7 +1244,7 @@ async function syncNow(){
 // Auto-trigger first sync
 (function(){
   const queued=${status.subscribed && status.githubConnected ? String(status.syncQueued) : "false"};
-  const neverSynced=${status.subscribed && status.githubConnected ? String(!status.lastPostsSyncAt && !status.lastBookmarksSyncAt) : "false"};
+  const neverSynced=${status.subscribed && status.githubConnected ? String(!status.lastPostsSyncAt && !status.lastBookmarksSyncAt && !status.lastLikesSyncAt) : "false"};
   if(queued){startPolling();}
   else if(neverSynced){syncNow();}
 })();
@@ -1261,6 +1269,8 @@ interface UserStatus {
   syncQueued: boolean;
   lastPostsSyncAt: number | null;
   lastBookmarksSyncAt: number | null;
+  lastLikesSyncAt: number | null;
+  lastDmsSyncAt: number | null;
   lastError: string | null;
 }
 
@@ -1309,6 +1319,10 @@ export class UserDO extends DurableObject<Env> {
       ["last_bookmarks_sync_at", "INTEGER"],
       ["last_posts_since_id", "TEXT"],
       ["last_bookmarks_since_id", "TEXT"],
+      ["last_likes_sync_at", "INTEGER"],
+      ["last_likes_since_id", "TEXT"],
+      ["last_dms_sync_at", "INTEGER"],
+      ["last_dms_since_id", "TEXT"],
       ["last_error", "TEXT"],
       ["sync_queued", "INTEGER DEFAULT 0"]
     ];
@@ -1449,6 +1463,8 @@ export class UserDO extends DurableObject<Env> {
       syncQueued: u?.sync_queued === 1,
       lastPostsSyncAt: u?.last_posts_sync_at || null,
       lastBookmarksSyncAt: u?.last_bookmarks_sync_at || null,
+      lastLikesSyncAt: u?.last_likes_sync_at || null,
+      lastDmsSyncAt: u?.last_dms_sync_at || null,
       lastError: u?.last_error || null
     };
   }
@@ -1534,9 +1550,36 @@ export class UserDO extends DurableObject<Env> {
         u.last_bookmarks_since_id || undefined
       );
       this.sql.exec(
-        `UPDATE users SET last_bookmarks_since_id=?, last_bookmarks_sync_at=?, last_error='' WHERE user_id=?`,
+        `UPDATE users SET last_bookmarks_since_id=?, last_bookmarks_sync_at=? WHERE user_id=?`,
         newBookmarksSince || u.last_bookmarks_since_id,
         Date.now(),
+        u.user_id
+      );
+
+      // Sync likes (non-fatal — old tokens may lack like.read scope)
+      try {
+        const newLikesSince = await this.syncLikes(
+          u.user_id,
+          accessToken,
+          ghToken,
+          install,
+          u.last_likes_since_id || undefined
+        );
+        this.sql.exec(
+          `UPDATE users SET last_likes_since_id=?, last_likes_sync_at=? WHERE user_id=?`,
+          newLikesSince || u.last_likes_since_id,
+          Date.now(),
+          u.user_id
+        );
+      } catch (e: any) {
+        console.error(`Likes sync failed for ${u.user_id}:`, e);
+      }
+
+      // DMs sync disabled — X API only returns last 30 days and many messages are missing
+      // TODO: re-enable when a more reliable approach is found
+
+      this.sql.exec(
+        `UPDATE users SET last_error='' WHERE user_id=?`,
         u.user_id
       );
     } catch (e: any) {
@@ -1712,6 +1755,319 @@ export class UserDO extends DurableObject<Env> {
     }
 
     return newestId || null;
+  }
+
+  private async syncLikes(
+    userId: string,
+    xToken: string,
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    sinceId?: string
+  ): Promise<string | null> {
+    const allTweets: any[] = [];
+    const authorMap: Record<string, string> = {};
+    const quotedMap: Record<string, any> = {};
+    let nextToken: string | undefined;
+    let newestId: string | undefined;
+
+    while (allTweets.length < 1000) {
+      const fetchUrl = new URL(
+        `https://api.x.com/2/users/${userId}/liked_tweets`
+      );
+      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set(
+        "tweet.fields",
+        "created_at,author_id,public_metrics,referenced_tweets,conversation_id,entities"
+      );
+      fetchUrl.searchParams.set(
+        "expansions",
+        "author_id,referenced_tweets.id,referenced_tweets.id.author_id"
+      );
+      fetchUrl.searchParams.set("user.fields", "username");
+      if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
+
+      const res = await fetch(fetchUrl.toString(), {
+        headers: { Authorization: `Bearer ${xToken}` }
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`X likes fetch failed: ${res.status}`, body);
+        throw new Error(`X likes fetch failed: ${res.status} ${body}`);
+      }
+      const data = (await res.json()) as {
+        data?: any[];
+        includes?: {
+          users?: { id: string; username: string }[];
+          tweets?: any[];
+        };
+        meta?: { next_token?: string; newest_id?: string };
+      };
+
+      if (!data.data?.length) break;
+
+      for (const u of data.includes?.users || []) authorMap[u.id] = u.username;
+      for (const t of data.includes?.tweets || []) quotedMap[t.id] = t;
+      if (!newestId) newestId = data.meta?.newest_id || data.data[0]?.id;
+
+      let done = false;
+      for (const tweet of data.data) {
+        if (sinceId && tweet.id === sinceId) {
+          done = true;
+          break;
+        }
+        allTweets.push(tweet);
+      }
+      if (done || !data.meta?.next_token) break;
+      nextToken = data.meta.next_token;
+    }
+
+    const dateGroups: Record<string, any[]> = {};
+    for (const tweet of allTweets) {
+      const date = (tweet.created_at || "").slice(0, 10) || "unknown";
+      if (!dateGroups[date]) dateGroups[date] = [];
+      dateGroups[date].push(tweet);
+    }
+
+    for (const [date, tweets] of Object.entries(dateGroups)) {
+      tweets.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      await this.writeDateFile(
+        ghToken,
+        install,
+        `x-likes/${date}.md`,
+        tweets,
+        authorMap,
+        quotedMap,
+        date
+      );
+    }
+
+    return newestId || null;
+  }
+
+  private async syncDMs(
+    userId: string,
+    xToken: string,
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    sinceId?: string
+  ): Promise<string | null> {
+    const allEvents: any[] = [];
+    const userMap: Record<string, string> = {};
+    let nextToken: string | undefined;
+    let newestId: string | undefined;
+
+    // Paginate through all available DM events (API returns last 30 days)
+    do {
+      const fetchUrl = new URL("https://api.x.com/2/dm_events");
+      // NB: we do 50 here because otherwise pagination doesnt work
+      fetchUrl.searchParams.set("max_results", "50");
+      fetchUrl.searchParams.set("event_types", "MessageCreate");
+      fetchUrl.searchParams.set(
+        "dm_event.fields",
+        "created_at,dm_conversation_id,sender_id,text,attachments,referenced_tweets"
+      );
+      fetchUrl.searchParams.set("expansions", "sender_id");
+      fetchUrl.searchParams.set("user.fields", "username");
+      if (nextToken) fetchUrl.searchParams.set("pagination_token", nextToken);
+
+      const res = await fetch(fetchUrl.toString(), {
+        headers: { Authorization: `Bearer ${xToken}` }
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`X DMs fetch failed: ${res.status}`, body);
+        throw new Error(`X DMs fetch failed: ${res.status} ${body}`);
+      }
+      const data = (await res.json()) as {
+        data?: any[];
+        includes?: { users?: { id: string; username: string }[] };
+        meta?: { next_token?: string; newest_id?: string };
+      };
+
+      if (!data.data?.length) break;
+      if (!newestId) newestId = data.meta?.newest_id || data.data[0]?.id;
+
+      for (const u of data.includes?.users || []) userMap[u.id] = u.username;
+
+      let done = false;
+      for (const event of data.data) {
+        if (sinceId && event.id === sinceId) {
+          done = true;
+          break;
+        }
+        allEvents.push(event);
+      }
+      if (done || !data.meta?.next_token) break;
+      nextToken = data.meta.next_token;
+    } while (true);
+
+    if (allEvents.length === 0) return newestId || null;
+
+    // Group events by conversation
+    const convGroups: Record<string, any[]> = {};
+    for (const event of allEvents) {
+      const convId = event.dm_conversation_id || "unknown";
+      if (!convGroups[convId]) convGroups[convId] = [];
+      convGroups[convId].push(event);
+    }
+
+    for (const [convId, events] of Object.entries(convGroups)) {
+      // Skip conversations where the user never sent a message
+      // (these are message requests / spam the user never engaged with)
+      const userSent = events.some((ev) => ev.sender_id === userId);
+      if (!userSent) continue;
+
+      // Sort chronologically (oldest first) for reading order
+      events.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+
+      // Name file after the OTHER participants (not the authenticated user).
+      // For 1:1 convs, dm_conversation_id is "{smaller_id}-{larger_id}".
+      const participantIds = new Set<string>();
+      for (const ev of events) {
+        if (ev.sender_id) participantIds.add(ev.sender_id);
+      }
+      // Also extract IDs from conversation ID (covers cases where other
+      // person didn't message in this batch)
+      if (convId.includes("-")) {
+        for (const id of convId.split("-")) {
+          if (/^\d+$/.test(id)) participantIds.add(id);
+        }
+      }
+      // Remove the authenticated user — file name shows the other person(s)
+      participantIds.delete(userId);
+
+      const otherNames = [...participantIds]
+        .map((id) => userMap[id] || id)
+        .sort()
+        .join("-");
+
+      const fileName = `x-dms/${otherNames || convId}.md`;
+      await this.writeDMFile(ghToken, install, fileName, events, userMap);
+    }
+
+    return newestId || null;
+  }
+
+  private dmSection(event: any, senderUsername?: string): string {
+    const time = event.created_at
+      ? new Date(event.created_at).toISOString().replace("T", " ").slice(0, 16)
+      : "";
+    const sender = senderUsername
+      ? `@${senderUsername}`
+      : event.sender_id || "unknown";
+    const text = event.text || "";
+    return `## ${time} · ${sender}\n<!-- dm-id: ${event.id} -->\n\n${text}\n`;
+  }
+
+  private async writeDMFile(
+    ghToken: string,
+    install: { owner: string; repo: string; folder: string },
+    relativePath: string,
+    newEvents: any[],
+    userMap: Record<string, string>
+  ) {
+    const folder = install.folder
+      ? install.folder.replace(/^\/+|\/+$/g, "")
+      : "";
+    const fullPath = folder ? `${folder}/${relativePath}` : relativePath;
+    const apiUrl = `https://api.github.com/repos/${install.owner}/${install.repo}/contents/${encodeURIComponent(fullPath).replace(/%2F/g, "/")}`;
+    const ghHeaders = {
+      Authorization: `Bearer ${ghToken}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "x-archive-sync"
+    };
+
+    const existing = await fetch(apiUrl, { headers: ghHeaders });
+    let existingContent = "";
+    let sha: string | undefined;
+
+    if (existing.status === 200) {
+      const existingData = (await existing.json()) as {
+        sha: string;
+        content: string;
+      };
+      sha = existingData.sha;
+      existingContent = new TextDecoder().decode(
+        Uint8Array.from(atob(existingData.content.replace(/\s/g, "")), (c) =>
+          c.charCodeAt(0)
+        )
+      );
+    }
+
+    const eventsToAdd = newEvents.filter(
+      (e) => !existingContent.includes(`<!-- dm-id: ${e.id} -->`)
+    );
+    if (eventsToAdd.length === 0) return;
+
+    const newSections = eventsToAdd
+      .map((event) => this.dmSection(event, userMap[event.sender_id]))
+      .join("\n");
+
+    // Build participant header
+    const participantIds = new Set<string>();
+    for (const ev of newEvents) {
+      if (ev.sender_id) participantIds.add(ev.sender_id);
+    }
+    const participantLabel = [...participantIds]
+      .map((id) => `@${userMap[id] || id}`)
+      .join(", ");
+
+    const finalContent = existingContent
+      ? existingContent + "\n" + newSections
+      : `# DM Conversation: ${participantLabel}\n\n${newSections}`;
+    const encoded = btoa(
+      String.fromCharCode(...new TextEncoder().encode(finalContent))
+    );
+
+    const body: any = {
+      message: sha ? `Update DMs ${relativePath}` : `Add DMs ${relativePath}`,
+      content: encoded
+    };
+    if (sha) body.sha = sha;
+
+    let res = await fetch(apiUrl, {
+      method: "PUT",
+      headers: { ...ghHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (res.status === 409) {
+      const refetch = await fetch(apiUrl, { headers: ghHeaders });
+      if (refetch.status === 200) {
+        const refetchData = (await refetch.json()) as {
+          sha: string;
+          content: string;
+        };
+        body.sha = refetchData.sha;
+        const currentContent = new TextDecoder().decode(
+          Uint8Array.from(atob(refetchData.content.replace(/\s/g, "")), (c) =>
+            c.charCodeAt(0)
+          )
+        );
+        const stillMissing = eventsToAdd.filter(
+          (e) => !currentContent.includes(`<!-- dm-id: ${e.id} -->`)
+        );
+        if (stillMissing.length === 0) return;
+        const mergedContent =
+          currentContent +
+          "\n" +
+          stillMissing
+            .map((event) => this.dmSection(event, userMap[event.sender_id]))
+            .join("\n");
+        body.content = btoa(
+          String.fromCharCode(...new TextEncoder().encode(mergedContent))
+        );
+        res = await fetch(apiUrl, {
+          method: "PUT",
+          headers: { ...ghHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      }
+    }
+
+    if (!res.ok && res.status !== 422) {
+      throw new Error(`GitHub write failed: ${res.status} ${await res.text()}`);
+    }
   }
 
   private expandUrls(
