@@ -1607,9 +1607,11 @@ export class UserDO extends DurableObject<Env> {
     let nextToken: string | undefined;
     let newestId: string | undefined;
 
+    const pageSize = sinceId ? 10 : 100;
+
     do {
       const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/tweets`);
-      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set("max_results", String(pageSize));
       fetchUrl.searchParams.set(
         "tweet.fields",
         "created_at,public_metrics,referenced_tweets,conversation_id,entities,author_id"
@@ -1684,10 +1686,13 @@ export class UserDO extends DurableObject<Env> {
     const quotedMap: Record<string, any> = {};
     let nextToken: string | undefined;
     let newestId: string | undefined;
+    const isIncremental = !!sinceId;
+    let pageSize = isIncremental ? 1 : 100;
+    const maxItems = isIncremental ? 200 : 1000;
 
-    while (allTweets.length < 1000) {
+    while (allTweets.length < maxItems) {
       const fetchUrl = new URL(`https://api.x.com/2/users/${userId}/bookmarks`);
-      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set("max_results", String(pageSize));
       fetchUrl.searchParams.set(
         "tweet.fields",
         "created_at,author_id,public_metrics,referenced_tweets,conversation_id,entities"
@@ -1732,6 +1737,7 @@ export class UserDO extends DurableObject<Env> {
       }
       if (done || !data.meta?.next_token) break;
       nextToken = data.meta.next_token;
+      if (isIncremental && pageSize < 10) pageSize = 10;
     }
 
     const dateGroups: Record<string, any[]> = {};
@@ -1769,12 +1775,15 @@ export class UserDO extends DurableObject<Env> {
     const quotedMap: Record<string, any> = {};
     let nextToken: string | undefined;
     let newestId: string | undefined;
+    const isIncremental = !!sinceId;
+    let pageSize = isIncremental ? 5 : 100;
+    const maxItems = isIncremental ? 200 : 1000;
 
-    while (allTweets.length < 1000) {
+    while (allTweets.length < maxItems) {
       const fetchUrl = new URL(
         `https://api.x.com/2/users/${userId}/liked_tweets`
       );
-      fetchUrl.searchParams.set("max_results", "100");
+      fetchUrl.searchParams.set("max_results", String(pageSize));
       fetchUrl.searchParams.set(
         "tweet.fields",
         "created_at,author_id,public_metrics,referenced_tweets,conversation_id,entities"
@@ -1819,6 +1828,7 @@ export class UserDO extends DurableObject<Env> {
       }
       if (done || !data.meta?.next_token) break;
       nextToken = data.meta.next_token;
+      if (isIncremental && pageSize < 10) pageSize = 10;
     }
 
     const dateGroups: Record<string, any[]> = {};
