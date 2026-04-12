@@ -250,7 +250,7 @@ export default {
           headers: { Location: "/dashboard" }
         });
       }
-      return new Response(renderLanding(), {
+      return new Response(renderLanding(url), {
         headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
@@ -647,6 +647,30 @@ export default {
       });
     }
 
+    // ── robots.txt ──
+    if (path === "/robots.txt") {
+      return new Response(
+        `User-agent: *\nAllow: /\n\nSitemap: ${url.origin}/sitemap.xml`,
+        { headers: { "Content-Type": "text/plain" } }
+      );
+    }
+
+    // ── sitemap.xml ──
+    if (path === "/sitemap.xml") {
+      const urls = [
+        `<url><loc>${url.origin}/</loc><priority>1.0</priority></url>`,
+        `<url><loc>${url.origin}/blog</loc><priority>0.8</priority></url>`,
+        ...BLOG_POSTS.map(
+          (p) =>
+            `<url><loc>${url.origin}/blog/${p.slug}</loc><lastmod>${p.published}</lastmod><priority>0.7</priority></url>`
+        )
+      ];
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`,
+        { headers: { "Content-Type": "application/xml" } }
+      );
+    }
+
     return new Response("Not Found", { status: 404 });
   },
 
@@ -948,26 +972,78 @@ function renderBlogPost(
 </body></html>`;
 }
 
-function renderLanding(): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Thyself</title>
+function renderLanding(requestUrl: URL): string {
+  const canonical = `${requestUrl.origin}/`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GrokThyself — Auto-backup your X tweets, bookmarks &amp; likes to GitHub</title>
+<meta name="description" content="Never lose a tweet again. GrokThyself syncs your X posts, bookmarks, and likes to a private GitHub repo automatically. $8/month. Connect in 60 seconds.">
+<link rel="canonical" href="${canonical}">
+<meta property="og:title" content="GrokThyself — Auto-backup your X tweets, bookmarks & likes to GitHub">
+<meta property="og:description" content="Never lose a tweet again. GrokThyself syncs your X posts, bookmarks, and likes to a private GitHub repo automatically.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${canonical}">
+<meta property="og:image" content="${requestUrl.origin}/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GrokThyself — Auto-backup your X tweets, bookmarks & likes to GitHub">
+<meta name="twitter:description" content="Never lose a tweet again. Sync your X posts, bookmarks, and likes to a private GitHub repo automatically.">
+<meta name="twitter:image" content="${requestUrl.origin}/og.png">
+<script type="application/ld+json">
+${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "GrokThyself",
+    applicationCategory: "UtilitiesApplication",
+    operatingSystem: "Web",
+    description:
+      "Automatically back up your X (Twitter) tweets, bookmarks, and likes to a private GitHub repository.",
+    url: canonical,
+    offers: {
+      "@type": "Offer",
+      price: "8.00",
+      priceCurrency: "USD",
+      billingIncrement: "P1M"
+    },
+    featureList: [
+      "Automatic daily sync of tweets, bookmarks, and likes",
+      "Private GitHub repository storage",
+      "Works with free GitHub accounts",
+      "60-second setup"
+    ]
+  })}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center}
-nav{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid rgba(255,255,255,.07)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#000;color:#fff;min-height:100vh;padding:0}
+nav{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.85);backdrop-filter:blur(12px);z-index:10}
 nav .brand{font-size:15px;font-weight:600;color:#fff;text-decoration:none}
 nav a{font-size:14px;color:#666;text-decoration:none}
 nav a:hover{color:#fff}
 nav .nav-links{display:flex;gap:24px;align-items:center}
+.hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:140px 24px 80px;min-height:100vh}
 .logo{width:100px;height:100px;object-fit:contain;animation:float 3.5s ease-in-out infinite;margin-bottom:32px}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
 .eyebrow{font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:16px}
 h1{font-size:clamp(40px,8vw,72px);font-weight:700;letter-spacing:-2px;line-height:1.05;margin-bottom:20px}
 h1 em{font-style:normal;color:#888}
-.sub{font-size:19px;color:#666;line-height:1.5;max-width:380px;margin:0 auto 40px}
+.sub{font-size:19px;color:#666;line-height:1.5;max-width:420px;margin:0 auto 40px}
 .sub strong{color:#aaa;font-weight:500}
 a.btn{display:inline-block;padding:16px 36px;background:#fff;color:#000;border-radius:980px;font-weight:600;font-size:16px;text-decoration:none;transition:opacity .15s}
 a.btn:hover{opacity:.85}
 .price{margin-top:20px;font-size:13px;color:#444}
+.features{max-width:720px;margin:0 auto;padding:0 24px 80px}
+.features h2{font-size:clamp(24px,5vw,36px);font-weight:700;letter-spacing:-1px;text-align:center;margin-bottom:48px;line-height:1.15}
+.features h2 em{font-style:normal;color:#888}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:64px}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px}
+.card h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.card p{font-size:14px;color:#888;line-height:1.5}
+.trust{text-align:center;padding:0 24px 80px}
+.trust h2{font-size:clamp(24px,5vw,36px);font-weight:700;letter-spacing:-1px;margin-bottom:32px}
+.trust-items{display:flex;flex-wrap:wrap;justify-content:center;gap:24px 40px;max-width:640px;margin:0 auto 48px}
+.trust-item{font-size:15px;color:#888}
+.trust-item strong{color:#ccc;font-weight:500}
+.bottom-cta{text-align:center;padding:40px 24px 80px;border-top:1px solid rgba(255,255,255,.06)}
+.bottom-cta p{font-size:17px;color:#666;margin-bottom:24px}
 </style>
 </head><body>
 <nav>
@@ -977,12 +1053,57 @@ a.btn:hover{opacity:.85}
     <a href="/auth/x/login">Sign in</a>
   </div>
 </nav>
-<img class="logo" src="/socrates.png" alt="Socrates">
-<p class="eyebrow">Personal knowledge base</p>
-<h1>Your X data,<br><em>your knowledge.</em></h1>
-<p class="sub">Posts, bookmarks &amp; likes, synced daily<br>to a private GitHub repo.</p>
-<a class="btn" href="/auth/x/login">Sign in with X</a>
-<p class="price">$8 / month &nbsp;·&nbsp; Cancel anytime</p>
+
+<section class="hero">
+  <img class="logo" src="/socrates.png" alt="GrokThyself — automatic X Twitter backup tool">
+  <p class="eyebrow">Automatic X / Twitter backup</p>
+  <h1>Your X data,<br><em>your knowledge.</em></h1>
+  <p class="sub">Your tweets, bookmarks &amp; likes — <strong>synced daily</strong> to a private GitHub repo. Set up in 60 seconds.</p>
+  <a class="btn" href="/auth/x/login">Sign in with X</a>
+  <p class="price">$8 / month &nbsp;·&nbsp; Cancel anytime</p>
+</section>
+
+<section class="features">
+  <h2>Everything you post, like, and save — <em>backed up automatically</em></h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Tweets &amp; threads</h3>
+      <p>Every post you publish is saved to your repo as structured data you can search, query, and keep forever.</p>
+    </div>
+    <div class="card">
+      <h3>Bookmarks</h3>
+      <p>X bookmarks can't be exported natively. GrokThyself backs them up automatically before they disappear.</p>
+    </div>
+    <div class="card">
+      <h3>Likes</h3>
+      <p>Liked tweets get deleted all the time. Your backup preserves them even when the original is gone.</p>
+    </div>
+    <div class="card">
+      <h3>Daily sync</h3>
+      <p>Runs every day without you lifting a finger. Your archive grows automatically — no manual exports.</p>
+    </div>
+  </div>
+
+  <h2>Your data lives in your GitHub repo, <em>not our servers</em></h2>
+  <p style="text-align:center;color:#888;font-size:16px;line-height:1.6;max-width:480px;margin:0 auto 64px">Private repo, only you can see it. Every sync is a git commit. Works with free GitHub accounts.</p>
+</section>
+
+<section class="trust">
+  <h2>Set it up in 60 seconds</h2>
+  <div class="trust-items">
+    <div class="trust-item"><strong>1.</strong> Sign in with X</div>
+    <div class="trust-item"><strong>2.</strong> Connect GitHub</div>
+    <div class="trust-item"><strong>3.</strong> Subscribe</div>
+    <div class="trust-item"><strong>4.</strong> Done — syncs daily</div>
+  </div>
+  <p style="color:#555;font-size:14px;max-width:480px;margin:0 auto">The only tool that continuously backs up your tweets, bookmarks, AND likes to GitHub — automatically.</p>
+</section>
+
+<section class="bottom-cta">
+  <p>Never lose a tweet again.</p>
+  <a class="btn" href="/auth/x/login">Get started — $8/month</a>
+</section>
+
 </body></html>`;
 }
 
